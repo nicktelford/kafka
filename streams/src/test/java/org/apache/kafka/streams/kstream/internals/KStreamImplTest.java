@@ -538,7 +538,7 @@ public class KStreamImplTest {
     public void shouldNotAllowNullKStreamOnMerge() {
         final NullPointerException exception = assertThrows(
             NullPointerException.class,
-            () -> testStream.merge(null));
+            () -> testStream.merge((KStream<String, String>) null));
         assertThat(exception.getMessage(), equalTo("stream can't be null"));
     }
 
@@ -546,7 +546,7 @@ public class KStreamImplTest {
     public void shouldNotAllowNullKStreamOnMergeWithNamed() {
         final NullPointerException exception = assertThrows(
             NullPointerException.class,
-            () -> testStream.merge(null, Named.as("merge")));
+            () -> testStream.merge((KStream<String, String>) null, Named.as("merge")));
         assertThat(exception.getMessage(), equalTo("stream can't be null"));
     }
 

@@ -24,6 +24,7 @@ import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.StreamsBuilder;
 import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.Topology;
+import org.apache.kafka.streams.kstream.internals.NamedInternal;
 import org.apache.kafka.streams.processor.ConnectedStoreProvider;
 import org.apache.kafka.streams.processor.api.Processor;
 import org.apache.kafka.streams.processor.api.ProcessorSupplier;
@@ -32,6 +33,10 @@ import org.apache.kafka.streams.processor.StreamPartitioner;
 import org.apache.kafka.streams.processor.TopicNameExtractor;
 import org.apache.kafka.streams.state.KeyValueStore;
 import org.apache.kafka.streams.state.StoreBuilder;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Iterator;
 
 /**
  * {@code KStream} is an abstraction of a <i>record stream</i> of {@link KeyValue} pairs, i.e., each record is an
@@ -57,6 +62,51 @@ import org.apache.kafka.streams.state.StoreBuilder;
  * @see StreamsBuilder#stream(String)
  */
 public interface KStream<K, V> {
+
+    /**
+     * Merge a collection of streams in to a single larger stream.
+     *
+     * There is no ordering guarantee between records from the provided {@code KStream}s in the
+     * merged stream.
+     * Relative order is preserved within each input stream though (ie, records within one input
+     * stream are processed in order).
+     *
+     * If the collection is empty, {@code null} is returned.
+     *
+     * @param streams streams which are to be merged in to a single stream
+     * @param <K>     Type of keys
+     * @param <V>     Type of values
+     * @return a merged stream containing all records from all provided {@code KStream}s, or null if empty.
+     */
+    static <K, V> KStream<K, V> merged(final Collection<KStream<K, V>> streams) {
+        return merged(streams, NamedInternal.empty());
+    }
+
+    /**
+     * Merge a collection of streams in to a single larger stream.
+     *
+     * There is no ordering guarantee between records from the provided {@code KStream}s in the
+     * merged stream.
+     * Relative order is preserved within each input stream though (ie, records within one input
+     * stream are processed in order).
+     *
+     * If the collection is empty, {@code null} is returned.
+     *
+     * @param streams streams which are to be merged in to a single stream
+     * @param named   a {@link Named} config used to name the processor in the topology
+     * @param <K>     Type of keys
+     * @param <V>     Type of values
+     * @return a merged stream containing all records from all provided {@code KStream}s, or null if empty.
+     */
+    static <K, V> KStream<K, V> merged(final Collection<KStream<K, V>> streams, Named named) {
+        if (streams.isEmpty()) return null;
+        final Iterator<KStream<K, V>> it = streams.iterator();
+        final KStream<K, V> first = it.next();
+        if (!it.hasNext()) return first;
+        final ArrayList<KStream<K, V>> coll = new ArrayList<>(streams.size() - 1);
+        it.forEachRemaining(coll::add);
+        return first.merge(coll, named);
+    }
 
     /**
      * Create a new {@code KStream} that consists of all records of this stream which satisfy the given predicate.
@@ -831,6 +881,33 @@ public interface KStream<K, V> {
      * @return a merged stream containing all records from this and the provided {@code KStream}
      */
     KStream<K, V> merge(final KStream<K, V> stream, final Named named);
+
+    /**
+     * Merge this stream and the given streams into one larger stream.
+     * <p>
+     * There is no ordering guarantee between records from this {@code KStream} and records from
+     * the provided {@code KStream}s in the merged stream.
+     * Relative order is preserved within each input stream though (ie, records within one input
+     * stream are processed in order).
+     *
+     * @param streams streams which are to be merged into this stream
+     * @return a merged stream containing all records from this and the provided {@code KStream}s
+     */
+    KStream<K, V> merge(final Collection<KStream<K, V>> streams);
+
+    /**
+     * Merge this stream and the given streams into one larger stream.
+     * <p>
+     * There is no ordering guarantee between records from this {@code KStream} and records from
+     * the provided {@code KStream}s in the merged stream.
+     * Relative order is preserved within each input stream though (ie, records within one input
+     * stream are processed in order).
+     *
+     * @param streams streams which are to be merged into this stream
+     * @param named   a {@link Named} config used to name the processor in the topology
+     * @return a merged stream containing all records from this and the provided {@code KStream}s
+     */
+    KStream<K, V> merge(final Collection<KStream<K, V>> streams, final Named named);
 
     /**
      * Materialize this stream to a topic and creates a new {@code KStream} from the topic using default serializers,
