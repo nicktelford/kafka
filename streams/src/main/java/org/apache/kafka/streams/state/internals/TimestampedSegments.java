@@ -17,6 +17,7 @@
 package org.apache.kafka.streams.state.internals;
 
 import org.apache.kafka.streams.processor.ProcessorContext;
+import org.apache.kafka.streams.processor.StateStoreContext;
 import org.apache.kafka.streams.processor.internals.ProcessorContextUtils;
 import org.apache.kafka.streams.state.internals.metrics.RocksDBMetricsRecorder;
 
@@ -41,22 +42,21 @@ class TimestampedSegments extends AbstractSegments<TimestampedSegment> {
         if (segments.containsKey(segmentId)) {
             return segments.get(segmentId);
         } else {
-            final TimestampedSegment newSegment =
-                new TimestampedSegment(segmentName(segmentId), name, segmentId, metricsRecorder);
+            final TimestampedSegment newSegment = new TimestampedSegment(segmentName(segmentId), name, segmentId, metricsRecorder);
 
             if (segments.put(segmentId, newSegment) != null) {
                 throw new IllegalStateException("TimestampedSegment already exists. Possible concurrent access.");
             }
 
-            newSegment.openDB(context.appConfigs(), context.stateDir());
+            newSegment.init((StateStoreContext) context, null);
             return newSegment;
         }
     }
 
     @Override
     public TimestampedSegment getOrCreateSegmentIfLive(final long segmentId,
-                                                    final ProcessorContext context,
-                                                    final long streamTime) {
+                                                       final ProcessorContext context,
+                                                       final long streamTime) {
         final TimestampedSegment segment = super.getOrCreateSegmentIfLive(segmentId, context, streamTime);
         cleanupExpiredSegments(streamTime);
         return segment;

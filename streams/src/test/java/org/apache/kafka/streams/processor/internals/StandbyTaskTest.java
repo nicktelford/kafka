@@ -513,11 +513,9 @@ public class StandbyTaskTest {
 
     @SuppressWarnings("deprecation")
     @Test
-    public void shouldDeleteStateDirOnTaskCreatedAndEosAlphaUncleanClose() {
+    public void shouldNotDeleteStateDirOnTaskCreatedAndEosAlphaUncleanClose() {
         stateManager.close();
         EasyMock.expectLastCall();
-
-        EasyMock.expect(stateManager.baseDir()).andReturn(baseDir);
 
         EasyMock.replay(stateManager);
 
@@ -539,15 +537,14 @@ public class StandbyTaskTest {
 
         EasyMock.verify(stateManager);
 
+        assertTrue(baseDir.exists());
         assertEquals(Task.State.CLOSED, task.state());
     }
 
     @Test
-    public void shouldDeleteStateDirOnTaskCreatedAndEosV2UncleanClose() {
+    public void shouldNotDeleteStateDirOnTaskCreatedAndEosV2UncleanClose() {
         stateManager.close();
         EasyMock.expectLastCall();
-
-        EasyMock.expect(stateManager.baseDir()).andReturn(baseDir);
 
         EasyMock.replay(stateManager);
 
@@ -569,6 +566,7 @@ public class StandbyTaskTest {
 
         EasyMock.verify(stateManager);
 
+        assertTrue(baseDir.exists());
         assertEquals(Task.State.CLOSED, task.state());
     }
 

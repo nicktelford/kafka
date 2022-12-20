@@ -76,11 +76,11 @@ import org.rocksdb.Filter;
 import org.rocksdb.LRUCache;
 import org.rocksdb.Options;
 import org.rocksdb.PlainTableConfig;
+import org.rocksdb.RocksDBException;
 import org.rocksdb.Statistics;
 
 import java.io.File;
 import java.io.IOException;
-import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -100,6 +100,7 @@ import static org.hamcrest.CoreMatchers.either;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.hamcrest.CoreMatchers.nullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.greaterThan;
 import static org.hamcrest.Matchers.hasEntry;
@@ -204,6 +205,7 @@ public class RocksDBStoreTest extends AbstractKeyValueStoreTest {
         rocksDBStore = getRocksDBStoreWithRocksDBMetricsRecorder();
         context = getProcessorContext(RecordingLevel.INFO);
 
+        rocksDBStore.context = context;
         rocksDBStore.openDB(context.appConfigs(), context.stateDir());
 
         verify(metricsRecorder).addValueProviders(eq(DB_NAME), notNull(), notNull(), isNull());
@@ -214,6 +216,7 @@ public class RocksDBStoreTest extends AbstractKeyValueStoreTest {
         rocksDBStore = getRocksDBStoreWithRocksDBMetricsRecorder();
         context = getProcessorContext(RecordingLevel.DEBUG);
 
+        rocksDBStore.context = context;
         rocksDBStore.openDB(context.appConfigs(), context.stateDir());
 
         verify(metricsRecorder).addValueProviders(eq(DB_NAME), notNull(), notNull(), notNull());
@@ -224,6 +227,7 @@ public class RocksDBStoreTest extends AbstractKeyValueStoreTest {
         rocksDBStore = getRocksDBStoreWithRocksDBMetricsRecorder();
         try {
             context = getProcessorContext(RecordingLevel.DEBUG);
+            rocksDBStore.context = context;
             rocksDBStore.openDB(context.appConfigs(), context.stateDir());
         } finally {
             rocksDBStore.close();
@@ -255,6 +259,7 @@ public class RocksDBStoreTest extends AbstractKeyValueStoreTest {
         rocksDBStore = getRocksDBStoreWithRocksDBMetricsRecorder();
         context = getProcessorContext(RecordingLevel.DEBUG, RocksDBConfigSetterWithUserProvidedStatistics.class);
 
+        rocksDBStore.context = context;
         rocksDBStore.openDB(context.appConfigs(), context.stateDir());
 
         verify(metricsRecorder).addValueProviders(eq(DB_NAME), notNull(), notNull(), isNull());
@@ -266,6 +271,7 @@ public class RocksDBStoreTest extends AbstractKeyValueStoreTest {
         rocksDBStore = getRocksDBStoreWithRocksDBMetricsRecorder();
         context = getProcessorContext(RecordingLevel.DEBUG, RocksDBConfigSetterWithUserProvidedStatistics.class);
 
+        rocksDBStore.context = context;
         rocksDBStore.openDB(context.appConfigs(), context.stateDir());
         final Statistics userStatistics = RocksDBConfigSetterWithUserProvidedStatistics.lastStatistics;
         final Statistics statisticsHandle = getStatistics(rocksDBStore);
@@ -283,6 +289,7 @@ public class RocksDBStoreTest extends AbstractKeyValueStoreTest {
         rocksDBStore = getRocksDBStoreWithRocksDBMetricsRecorder();
         context = getProcessorContext(RecordingLevel.DEBUG);
 
+        rocksDBStore.context = context;
         rocksDBStore.openDB(context.appConfigs(), context.stateDir());
 
         verify(metricsRecorder).addValueProviders(eq(DB_NAME), notNull(), notNull(), eq(getStatistics(rocksDBStore)));
@@ -293,6 +300,7 @@ public class RocksDBStoreTest extends AbstractKeyValueStoreTest {
         rocksDBStore = getRocksDBStoreWithRocksDBMetricsRecorder();
         context = getProcessorContext(RecordingLevel.DEBUG);
 
+        rocksDBStore.context = context;
         rocksDBStore.openDB(context.appConfigs(), context.stateDir());
         final Statistics statisticsHandle = getStatistics(rocksDBStore);
         rocksDBStore.close();
@@ -322,6 +330,7 @@ public class RocksDBStoreTest extends AbstractKeyValueStoreTest {
             RecordingLevel.DEBUG,
             RocksDBConfigSetterWithUserProvidedNewBlockBasedTableFormatConfig.class
         );
+        rocksDBStore.context = context;
         assertThrows(
             "The used block-based table format configuration does not expose the " +
                 "block cache. Use the BlockBasedTableConfig instance provided by Options#tableFormatConfig() to configure " +
@@ -352,6 +361,7 @@ public class RocksDBStoreTest extends AbstractKeyValueStoreTest {
             RocksDBConfigSetterWithUserProvidedNewPlainTableFormatConfig.class
         );
 
+        rocksDBStore.context = context;
         rocksDBStore.openDB(context.appConfigs(), context.stateDir());
 
         verify(metricsRecorder).addValueProviders(eq(DB_NAME), notNull(), isNull(), notNull());
@@ -406,6 +416,7 @@ public class RocksDBStoreTest extends AbstractKeyValueStoreTest {
 
         assertTrue(tmpDir.setReadOnly());
 
+        rocksDBStore.context = tmpContext;
         assertThrows(ProcessorStateException.class, () -> rocksDBStore.openDB(tmpContext.appConfigs(), tmpContext.stateDir()));
     }
 
@@ -888,6 +899,8 @@ public class RocksDBStoreTest extends AbstractKeyValueStoreTest {
             rocksDBStore.put(new Bytes(keyValue.key), keyValue.value);
         }
 
+        rocksDBStore.flush();
+
         int expectedIndex = 0;
         for (final KeyValue<byte[], byte[]> keyValue : keyValues) {
             final byte[] valBytes = rocksDBStore.get(new Bytes(keyValue.key));
@@ -932,6 +945,7 @@ public class RocksDBStoreTest extends AbstractKeyValueStoreTest {
         final byte[] key = "hello".getBytes();
         final byte[] value = "world".getBytes();
         rocksDBStore.put(Bytes.wrap(key), value);
+        rocksDBStore.flush();
 
         streamsMetrics.rocksDBMetricsRecordingTrigger().run();
 
@@ -965,15 +979,9 @@ public class RocksDBStoreTest extends AbstractKeyValueStoreTest {
         final byte[] key = "hello".getBytes();
         final byte[] value = "world".getBytes();
         rocksDBStore.put(Bytes.wrap(key), value);
+        rocksDBStore.flush();
 
-        final Metric numberOfEntriesActiveMemTable = metrics.metric(new MetricName(
-            "num-entries-active-mem-table",
-            StreamsMetricsImpl.STATE_STORE_LEVEL_GROUP,
-            "description is not verified",
-            streamsMetrics.storeLevelTagMap(taskId.toString(), METRICS_SCOPE, DB_NAME)
-        ));
-        assertThat(numberOfEntriesActiveMemTable, notNullValue());
-        assertThat((BigInteger) numberOfEntriesActiveMemTable.metricValue(), greaterThan(BigInteger.valueOf(0)));
+        assertThat(rocksDBStore.approximateNumEntries(), greaterThan(0L));
     }
 
     @Test
@@ -1189,6 +1197,150 @@ public class RocksDBStoreTest extends AbstractKeyValueStoreTest {
         rocksDBStore.init((StateStoreContext) context, rocksDBStore);
         context.restore(rocksDBStore.name(), entries);
         assertThat(rocksDBStore.getPosition(), is(Position.emptyPosition()));
+    }
+
+    @Test
+    public void shouldWriteDirectlyToStoreUnderALOS() throws RocksDBException {
+        final Properties props = StreamsTestUtils.getStreamsConfig();
+        props.put(StreamsConfig.PROCESSING_GUARANTEE_CONFIG, StreamsConfig.AT_LEAST_ONCE);
+        final StateStoreContext context = getProcessorContext(props);
+        rocksDBStore.init(context, null);
+
+        final RocksDBStore.DirectDBAccessor directDBAccessor = new RocksDBStore.DirectDBAccessor(rocksDBStore.db);
+
+        final Bytes key = Bytes.wrap("foo".getBytes());
+        final byte[] value = "bar".getBytes();
+        assertThat(rocksDBStore.cf.get(directDBAccessor, key.get()), is(nullValue()));
+        rocksDBStore.put(key, value);
+        assertThat(rocksDBStore.cf.get(directDBAccessor, key.get()), is(value));
+        assertThat(rocksDBStore.approximateNumUncommittedBytes(), is(0L));
+        assertThat(rocksDBStore.get(key), is(value));
+    }
+
+    @Test
+    public void shouldNotWriteDirectlyToStoreUnderEOS() throws RocksDBException {
+        final Properties props = StreamsTestUtils.getStreamsConfig();
+        props.put(StreamsConfig.PROCESSING_GUARANTEE_CONFIG, StreamsConfig.EXACTLY_ONCE_V2);
+        final StateStoreContext context = getProcessorContext(props);
+        rocksDBStore.init(context, null);
+        ((RocksDBStore.BatchedDBAccessor) rocksDBStore.accessor).isStreamThreadForTest = true;
+
+        final RocksDBStore.DirectDBAccessor directDBAccessor = new RocksDBStore.DirectDBAccessor(rocksDBStore.db);
+
+        final Bytes key = Bytes.wrap("foo".getBytes());
+        final byte[] value = "bar".getBytes();
+        assertThat(rocksDBStore.cf.get(directDBAccessor, key.get()), is(nullValue()));
+        rocksDBStore.put(key, value);
+        assertThat(rocksDBStore.cf.get(directDBAccessor, key.get()), is(nullValue()));
+        assertThat(rocksDBStore.approximateNumUncommittedBytes(), is(greaterThan(0L)));
+        assertThat(rocksDBStore.get(key), is(value));
+    }
+
+    @Test
+    public void shouldCommitTransactionsOnFlush() throws RocksDBException {
+        final Properties props = StreamsTestUtils.getStreamsConfig();
+        props.put(StreamsConfig.PROCESSING_GUARANTEE_CONFIG, StreamsConfig.EXACTLY_ONCE_V2);
+        final StateStoreContext context = getProcessorContext(props);
+        rocksDBStore.init(context, null);
+        ((RocksDBStore.BatchedDBAccessor) rocksDBStore.accessor).isStreamThreadForTest = true;
+
+        final RocksDBStore.DirectDBAccessor directDBAccessor = new RocksDBStore.DirectDBAccessor(rocksDBStore.db);
+
+        final Bytes key = Bytes.wrap("foo".getBytes());
+        final byte[] value = "bar".getBytes();
+        assertThat(rocksDBStore.cf.get(directDBAccessor, key.get()), is(nullValue()));
+        rocksDBStore.put(key, value);
+        assertThat(rocksDBStore.cf.get(directDBAccessor, key.get()), is(nullValue()));
+        rocksDBStore.flush();
+        assertThat(rocksDBStore.cf.get(directDBAccessor, key.get()), is(value));
+    }
+
+    @Test
+    public void shouldMakeRecordsReadableToStreamThreadBeforeFlushUnderEOS() throws RocksDBException {
+        final Properties props = StreamsTestUtils.getStreamsConfig();
+        props.put(StreamsConfig.PROCESSING_GUARANTEE_CONFIG, StreamsConfig.EXACTLY_ONCE_V2);
+        final StateStoreContext context = getProcessorContext(props);
+        rocksDBStore.init(context, null);
+        ((RocksDBStore.BatchedDBAccessor) rocksDBStore.accessor).isStreamThreadForTest = true;
+
+        final Bytes key = Bytes.wrap("foo".getBytes());
+        final byte[] value = "bar".getBytes();
+
+        assertThat(rocksDBStore.get(key), is(nullValue()));
+        rocksDBStore.put(key, value);
+        assertThat(rocksDBStore.get(key), is(value));
+    }
+
+    @Test
+    public void shouldNotCloseIteratorOnFlushUnderALOS() {
+        final Properties props = StreamsTestUtils.getStreamsConfig();
+        props.put(StreamsConfig.PROCESSING_GUARANTEE_CONFIG, StreamsConfig.AT_LEAST_ONCE);
+        final StateStoreContext context = getProcessorContext(props);
+        rocksDBStore.init(context, null);
+
+        final Bytes key = Bytes.wrap("foo".getBytes());
+        final byte[] value = "bar".getBytes();
+
+        rocksDBStore.put(key, value);
+        try (RocksDbIterator it = (RocksDbIterator) rocksDBStore.prefixScan("f", new StringSerializer())) {
+            assertThat(it.isOpen(), is(true));
+            assertThat(it.hasNext(), is(true));
+            final KeyValue<Bytes, byte[]> kv = it.next();
+            assertThat(kv.key, is(key));
+            assertThat(kv.value, is(value));
+            assertThat(it.isOpen(), is(true));
+            rocksDBStore.flush();
+            assertThat(it.isOpen(), is(true));
+        }
+    }
+
+    @Test
+    public void shouldCloseTransactionIteratorOnFlushUnderEOS() {
+        final Properties props = StreamsTestUtils.getStreamsConfig();
+        props.put(StreamsConfig.PROCESSING_GUARANTEE_CONFIG, StreamsConfig.EXACTLY_ONCE_V2);
+        final StateStoreContext context = getProcessorContext(props);
+        rocksDBStore.init(context, null);
+        ((RocksDBStore.BatchedDBAccessor) rocksDBStore.accessor).isStreamThreadForTest = true;
+
+        final Bytes key = Bytes.wrap("foo".getBytes());
+        final byte[] value = "bar".getBytes();
+
+        rocksDBStore.put(key, value);
+        try (RocksDbIterator it = (RocksDbIterator) rocksDBStore.prefixScan("f", new StringSerializer())) {
+            assertThat(it.isOpen(), is(true));
+            assertThat(it.hasNext(), is(true));
+            final KeyValue<Bytes, byte[]> kv = it.next();
+            assertThat(kv.key, is(key));
+            assertThat(kv.value, is(value));
+            assertThat(it.isOpen(), is(true));
+            rocksDBStore.flush();
+            assertThat(it.isOpen(), is(false));
+        }
+    }
+
+    @Test
+    public void shouldNotCloseNonTransactionIteratorOnFlushUnderEOS() {
+        final Properties props = StreamsTestUtils.getStreamsConfig();
+        props.put(StreamsConfig.PROCESSING_GUARANTEE_CONFIG, StreamsConfig.EXACTLY_ONCE_V2);
+        final StateStoreContext context = getProcessorContext(props);
+        rocksDBStore.init(context, null);
+        ((RocksDBStore.BatchedDBAccessor) rocksDBStore.accessor).isStreamThreadForTest = false;
+
+        final Bytes key = Bytes.wrap("foo".getBytes());
+        final byte[] value = "bar".getBytes();
+
+        rocksDBStore.put(key, value);
+        rocksDBStore.flush();
+        try (RocksDbIterator it = (RocksDbIterator) rocksDBStore.prefixScan("f", new StringSerializer())) {
+            assertThat(it.isOpen(), is(true));
+            assertThat(it.hasNext(), is(true));
+            final KeyValue<Bytes, byte[]> kv = it.next();
+            assertThat(kv.key, is(key));
+            assertThat(kv.value, is(value));
+            assertThat(it.isOpen(), is(true));
+            rocksDBStore.flush();
+            assertThat(it.isOpen(), is(true));
+        }
     }
 
     private List<ConsumerRecord<byte[], byte[]>> getChangelogRecords() {

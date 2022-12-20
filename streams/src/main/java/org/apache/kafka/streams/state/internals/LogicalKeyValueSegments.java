@@ -19,6 +19,7 @@ package org.apache.kafka.streams.state.internals;
 import java.util.HashMap;
 import java.util.Map;
 import org.apache.kafka.streams.processor.ProcessorContext;
+import org.apache.kafka.streams.processor.StateStoreContext;
 import org.apache.kafka.streams.processor.internals.ProcessorContextUtils;
 import org.apache.kafka.streams.state.internals.metrics.RocksDBMetricsRecorder;
 
@@ -98,7 +99,8 @@ public class LogicalKeyValueSegments extends AbstractSegments<LogicalKeyValueSeg
     @Override
     public void openExisting(final ProcessorContext context, final long streamTime) {
         metricsRecorder.init(ProcessorContextUtils.getMetricsImpl(context), context.taskId());
-        physicalStore.openDB(context.appConfigs(), context.stateDir());
+        physicalStore.init((StateStoreContext) context, null);
+//        physicalStore.openDB(context.appConfigs(), context.stateDir());
     }
 
     @Override

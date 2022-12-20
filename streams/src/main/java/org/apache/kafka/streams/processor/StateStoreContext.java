@@ -16,10 +16,13 @@
  */
 package org.apache.kafka.streams.processor;
 
+import org.apache.kafka.common.IsolationLevel;
 import org.apache.kafka.common.annotation.InterfaceStability.Evolving;
 import org.apache.kafka.common.serialization.Serde;
+import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.StreamsMetrics;
 import org.apache.kafka.streams.errors.StreamsException;
+import org.apache.kafka.streams.internals.StreamsConfigUtils;
 import org.apache.kafka.streams.processor.api.RecordMetadata;
 
 import java.io.File;
@@ -143,5 +146,20 @@ public interface StateStoreContext {
      * @return the key/values matching the given prefix from the StreamsConfig properties.
      */
     Map<String, Object> appConfigsWithPrefix(final String prefix);
+
+    /**
+     * Returns the {@link IsolationLevel} that all {@link StateStore stores} should use.
+     * <p>
+     * The default implementation of this method will use {@link IsolationLevel#READ_COMMITTED READ_COMMITTED} if the
+     * app is {@link #appConfigs() configured} to use an {@link StreamsConfig#EXACTLY_ONCE_V2 exactly-once} {@link
+     * StreamsConfig#PROCESSING_GUARANTEE_CONFIG processing guarantee}. Otherwise, it will be {@link
+     * IsolationLevel#READ_UNCOMMITTED READ_UNCOMMITTED}.
+     *
+     * @return the isolation level for every state store under this context.
+     */
+    default IsolationLevel isolationLevel() {
+        return StreamsConfigUtils.eosEnabled(new StreamsConfig(appConfigs())) ?
+                IsolationLevel.READ_COMMITTED : IsolationLevel.READ_UNCOMMITTED;
+    }
 
 }
