@@ -160,8 +160,7 @@ public class RocksDBTimeOrderedSessionSegmentedBytesStore extends AbstractRocksD
     }
 
     @Override
-    protected IndexToBaseStoreIterator getIndexToBaseStoreIterator(
-        final SegmentIterator<KeyValueSegment> segmentIterator) {
+    protected IndexToBaseStoreIterator getIndexToBaseStoreIterator(final SegmentIterator<KeyValueSegment> segmentIterator) {
         return new SessionKeySchemaIndexToBaseStoreIterator(segmentIterator);
     }
 }
