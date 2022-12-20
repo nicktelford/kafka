@@ -97,9 +97,9 @@ public class KeyValueSegmentsTest {
 
     @Test
     public void shouldCreateSegments() {
-        final KeyValueSegment segment1 = segments.getOrCreateSegmentIfLive(0, context, -1L);
-        final KeyValueSegment segment2 = segments.getOrCreateSegmentIfLive(1, context, -1L);
-        final KeyValueSegment segment3 = segments.getOrCreateSegmentIfLive(2, context, -1L);
+        final Segment segment1 = segments.getOrCreateSegmentIfLive(0, context, -1L);
+        final Segment segment2 = segments.getOrCreateSegmentIfLive(1, context, -1L);
+        final Segment segment3 = segments.getOrCreateSegmentIfLive(2, context, -1L);
         assertTrue(new File(context.stateDir(), "test/test.0").isDirectory());
         assertTrue(new File(context.stateDir(), "test/test." + SEGMENT_INTERVAL).isDirectory());
         assertTrue(new File(context.stateDir(), "test/test." + 2 * SEGMENT_INTERVAL).isDirectory());
@@ -117,9 +117,9 @@ public class KeyValueSegmentsTest {
 
     @Test
     public void shouldCleanupSegmentsThatHaveExpired() {
-        final KeyValueSegment segment1 = segments.getOrCreateSegmentIfLive(0, context, -1L);
-        final KeyValueSegment segment2 = segments.getOrCreateSegmentIfLive(1, context, -1L);
-        final KeyValueSegment segment3 = segments.getOrCreateSegmentIfLive(7, context, SEGMENT_INTERVAL * 7L);
+        final Segment segment1 = segments.getOrCreateSegmentIfLive(0, context, -1L);
+        final Segment segment2 = segments.getOrCreateSegmentIfLive(1, context, -1L);
+        final Segment segment3 = segments.getOrCreateSegmentIfLive(7, context, SEGMENT_INTERVAL * 7L);
         assertFalse(segment1.isOpen());
         assertFalse(segment2.isOpen());
         assertTrue(segment3.isOpen());
@@ -130,22 +130,22 @@ public class KeyValueSegmentsTest {
 
     @Test
     public void shouldGetSegmentForTimestamp() {
-        final KeyValueSegment segment = segments.getOrCreateSegmentIfLive(0, context, -1L);
+        final Segment segment = segments.getOrCreateSegmentIfLive(0, context, -1L);
         segments.getOrCreateSegmentIfLive(1, context, -1L);
         assertEquals(segment, segments.getSegmentForTimestamp(0L));
     }
 
     @Test
     public void shouldGetCorrectSegmentString() {
-        final KeyValueSegment segment = segments.getOrCreateSegmentIfLive(0, context, -1L);
+        final Segment segment = segments.getOrCreateSegmentIfLive(0, context, -1L);
         assertEquals("KeyValueSegment(id=0, name=test.0)", segment.toString());
     }
 
     @Test
     public void shouldCloseAllOpenSegments() {
-        final KeyValueSegment first = segments.getOrCreateSegmentIfLive(0, context, -1L);
-        final KeyValueSegment second = segments.getOrCreateSegmentIfLive(1, context, -1L);
-        final KeyValueSegment third = segments.getOrCreateSegmentIfLive(2, context, -1L);
+        final Segment first = segments.getOrCreateSegmentIfLive(0, context, -1L);
+        final Segment second = segments.getOrCreateSegmentIfLive(1, context, -1L);
+        final Segment third = segments.getOrCreateSegmentIfLive(2, context, -1L);
         segments.close();
 
         assertFalse(first.isOpen());
@@ -188,11 +188,11 @@ public class KeyValueSegmentsTest {
         segments.getOrCreateSegmentIfLive(3, context, streamTime);
         segments.getOrCreateSegmentIfLive(4, context, streamTime);
 
-        final List<KeyValueSegment> segments = this.segments.segments(0, 2 * SEGMENT_INTERVAL, true);
+        final List<TransactionalSegment<KeyValueSegment>> segments = this.segments.segments(0, 2 * SEGMENT_INTERVAL, true);
         assertEquals(3, segments.size());
-        assertEquals(0, segments.get(0).id);
-        assertEquals(1, segments.get(1).id);
-        assertEquals(2, segments.get(2).id);
+        assertEquals(0, segments.get(0).wrapped().id);
+        assertEquals(1, segments.get(1).wrapped().id);
+        assertEquals(2, segments.get(2).wrapped().id);
     }
 
     @Test
@@ -208,11 +208,11 @@ public class KeyValueSegmentsTest {
         segments.getOrCreateSegmentIfLive(3, context, streamTime);
         segments.getOrCreateSegmentIfLive(4, context, streamTime);
 
-        final List<KeyValueSegment> segments = this.segments.segments(0, 2 * SEGMENT_INTERVAL, false);
+        final List<TransactionalSegment<KeyValueSegment>> segments = this.segments.segments(0, 2 * SEGMENT_INTERVAL, false);
         assertEquals(3, segments.size());
-        assertEquals(0, segments.get(2).id);
-        assertEquals(1, segments.get(1).id);
-        assertEquals(2, segments.get(0).id);
+        assertEquals(0, segments.get(2).wrapped().id);
+        assertEquals(1, segments.get(1).wrapped().id);
+        assertEquals(2, segments.get(0).wrapped().id);
     }
 
     @Test
@@ -223,11 +223,11 @@ public class KeyValueSegmentsTest {
         updateStreamTimeAndCreateSegment(1);
         updateStreamTimeAndCreateSegment(3);
 
-        final List<KeyValueSegment> segments = this.segments.segments(0, 2 * SEGMENT_INTERVAL, true);
+        final List<TransactionalSegment<KeyValueSegment>> segments = this.segments.segments(0, 2 * SEGMENT_INTERVAL, true);
         assertEquals(3, segments.size());
-        assertEquals(0, segments.get(0).id);
-        assertEquals(1, segments.get(1).id);
-        assertEquals(2, segments.get(2).id);
+        assertEquals(0, segments.get(0).wrapped().id);
+        assertEquals(1, segments.get(1).wrapped().id);
+        assertEquals(2, segments.get(2).wrapped().id);
     }
 
     @Test
@@ -238,11 +238,11 @@ public class KeyValueSegmentsTest {
         updateStreamTimeAndCreateSegment(1);
         updateStreamTimeAndCreateSegment(3);
 
-        final List<KeyValueSegment> segments = this.segments.segments(0, 2 * SEGMENT_INTERVAL, false);
+        final List<TransactionalSegment<KeyValueSegment>> segments = this.segments.segments(0, 2 * SEGMENT_INTERVAL, false);
         assertEquals(3, segments.size());
-        assertEquals(2, segments.get(0).id);
-        assertEquals(1, segments.get(1).id);
-        assertEquals(0, segments.get(2).id);
+        assertEquals(2, segments.get(0).wrapped().id);
+        assertEquals(1, segments.get(1).wrapped().id);
+        assertEquals(0, segments.get(2).wrapped().id);
     }
 
     @Test
@@ -345,10 +345,10 @@ public class KeyValueSegmentsTest {
     }
 
     private void verifyCorrectSegments(final long first, final int numSegments) {
-        final List<KeyValueSegment> result = this.segments.segments(0, Long.MAX_VALUE, true);
+        final List<TransactionalSegment<KeyValueSegment>> result = this.segments.segments(0, Long.MAX_VALUE, true);
         assertEquals(numSegments, result.size());
         for (int i = 0; i < numSegments; i++) {
-            assertEquals(i + first, result.get(i).id);
+            assertEquals(i + first, result.get(i).wrapped().id);
         }
     }
 }

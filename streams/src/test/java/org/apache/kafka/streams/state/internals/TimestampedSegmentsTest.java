@@ -98,9 +98,9 @@ public class TimestampedSegmentsTest {
 
     @Test
     public void shouldCreateSegments() {
-        final TimestampedSegment segment1 = segments.getOrCreateSegmentIfLive(0, context, -1L);
-        final TimestampedSegment segment2 = segments.getOrCreateSegmentIfLive(1, context, -1L);
-        final TimestampedSegment segment3 = segments.getOrCreateSegmentIfLive(2, context, -1L);
+        final Segment segment1 = segments.getOrCreateSegmentIfLive(0, context, -1L);
+        final Segment segment2 = segments.getOrCreateSegmentIfLive(1, context, -1L);
+        final Segment segment3 = segments.getOrCreateSegmentIfLive(2, context, -1L);
         assertTrue(new File(context.stateDir(), "test/test.0").isDirectory());
         assertTrue(new File(context.stateDir(), "test/test." + SEGMENT_INTERVAL).isDirectory());
         assertTrue(new File(context.stateDir(), "test/test." + 2 * SEGMENT_INTERVAL).isDirectory());
@@ -118,9 +118,9 @@ public class TimestampedSegmentsTest {
 
     @Test
     public void shouldCleanupSegmentsThatHaveExpired() {
-        final TimestampedSegment segment1 = segments.getOrCreateSegmentIfLive(0, context, -1L);
-        final TimestampedSegment segment2 = segments.getOrCreateSegmentIfLive(1, context, -1L);
-        final TimestampedSegment segment3 = segments.getOrCreateSegmentIfLive(7, context, SEGMENT_INTERVAL * 7L);
+        final Segment segment1 = segments.getOrCreateSegmentIfLive(0, context, -1L);
+        final Segment segment2 = segments.getOrCreateSegmentIfLive(1, context, -1L);
+        final Segment segment3 = segments.getOrCreateSegmentIfLive(7, context, SEGMENT_INTERVAL * 7L);
         assertFalse(segment1.isOpen());
         assertFalse(segment2.isOpen());
         assertTrue(segment3.isOpen());
@@ -131,22 +131,22 @@ public class TimestampedSegmentsTest {
 
     @Test
     public void shouldGetSegmentForTimestamp() {
-        final TimestampedSegment segment = segments.getOrCreateSegmentIfLive(0, context, -1L);
+        final Segment segment = segments.getOrCreateSegmentIfLive(0, context, -1L);
         segments.getOrCreateSegmentIfLive(1, context, -1L);
         assertEquals(segment, segments.getSegmentForTimestamp(0L));
     }
 
     @Test
     public void shouldGetCorrectSegmentString() {
-        final TimestampedSegment segment = segments.getOrCreateSegmentIfLive(0, context, -1L);
+        final Segment segment = segments.getOrCreateSegmentIfLive(0, context, -1L);
         assertEquals("TimestampedSegment(id=0, name=test.0)", segment.toString());
     }
 
     @Test
     public void shouldCloseAllOpenSegments() {
-        final TimestampedSegment first = segments.getOrCreateSegmentIfLive(0, context, -1L);
-        final TimestampedSegment second = segments.getOrCreateSegmentIfLive(1, context, -1L);
-        final TimestampedSegment third = segments.getOrCreateSegmentIfLive(2, context, -1L);
+        final Segment first = segments.getOrCreateSegmentIfLive(0, context, -1L);
+        final Segment second = segments.getOrCreateSegmentIfLive(1, context, -1L);
+        final Segment third = segments.getOrCreateSegmentIfLive(2, context, -1L);
         segments.close();
 
         assertFalse(first.isOpen());
@@ -189,11 +189,11 @@ public class TimestampedSegmentsTest {
         segments.getOrCreateSegmentIfLive(3, context, streamTime);
         segments.getOrCreateSegmentIfLive(4, context, streamTime);
 
-        final List<TimestampedSegment> segments = this.segments.segments(0, 2 * SEGMENT_INTERVAL, true);
+        final List<TransactionalSegment<TimestampedSegment>> segments = this.segments.segments(0, 2 * SEGMENT_INTERVAL, true);
         assertEquals(3, segments.size());
-        assertEquals(0, segments.get(0).id);
-        assertEquals(1, segments.get(1).id);
-        assertEquals(2, segments.get(2).id);
+        assertEquals(0, segments.get(0).wrapped().id);
+        assertEquals(1, segments.get(1).wrapped().id);
+        assertEquals(2, segments.get(2).wrapped().id);
     }
 
     @Test
@@ -209,11 +209,11 @@ public class TimestampedSegmentsTest {
         segments.getOrCreateSegmentIfLive(3, context, streamTime);
         segments.getOrCreateSegmentIfLive(4, context, streamTime);
 
-        final List<TimestampedSegment> segments = this.segments.segments(0, 2 * SEGMENT_INTERVAL, false);
+        final List<TransactionalSegment<TimestampedSegment>> segments = this.segments.segments(0, 2 * SEGMENT_INTERVAL, false);
         assertEquals(3, segments.size());
-        assertEquals(0, segments.get(2).id);
-        assertEquals(1, segments.get(1).id);
-        assertEquals(2, segments.get(0).id);
+        assertEquals(0, segments.get(2).wrapped().id);
+        assertEquals(1, segments.get(1).wrapped().id);
+        assertEquals(2, segments.get(0).wrapped().id);
     }
 
     @Test
@@ -224,11 +224,11 @@ public class TimestampedSegmentsTest {
         updateStreamTimeAndCreateSegment(1);
         updateStreamTimeAndCreateSegment(3);
 
-        final List<TimestampedSegment> segments = this.segments.segments(0, 2 * SEGMENT_INTERVAL, true);
+        final List<TransactionalSegment<TimestampedSegment>> segments = this.segments.segments(0, 2 * SEGMENT_INTERVAL, true);
         assertEquals(3, segments.size());
-        assertEquals(0, segments.get(0).id);
-        assertEquals(1, segments.get(1).id);
-        assertEquals(2, segments.get(2).id);
+        assertEquals(0, segments.get(0).wrapped().id);
+        assertEquals(1, segments.get(1).wrapped().id);
+        assertEquals(2, segments.get(2).wrapped().id);
     }
 
     @Test
@@ -239,11 +239,11 @@ public class TimestampedSegmentsTest {
         updateStreamTimeAndCreateSegment(1);
         updateStreamTimeAndCreateSegment(3);
 
-        final List<TimestampedSegment> segments = this.segments.segments(0, 2 * SEGMENT_INTERVAL, false);
+        final List<TransactionalSegment<TimestampedSegment>> segments = this.segments.segments(0, 2 * SEGMENT_INTERVAL, false);
         assertEquals(3, segments.size());
-        assertEquals(0, segments.get(2).id);
-        assertEquals(1, segments.get(1).id);
-        assertEquals(2, segments.get(0).id);
+        assertEquals(0, segments.get(2).wrapped().id);
+        assertEquals(1, segments.get(1).wrapped().id);
+        assertEquals(2, segments.get(0).wrapped().id);
     }
 
     @Test
@@ -346,10 +346,10 @@ public class TimestampedSegmentsTest {
     }
 
     private void verifyCorrectSegments(final long first, final int numSegments) {
-        final List<TimestampedSegment> result = this.segments.segments(0, Long.MAX_VALUE, true);
+        final List<TransactionalSegment<TimestampedSegment>> result = this.segments.segments(0, Long.MAX_VALUE, true);
         assertEquals(numSegments, result.size());
         for (int i = 0; i < numSegments; i++) {
-            assertEquals(i + first, result.get(i).id);
+            assertEquals(i + first, result.get(i).wrapped().id);
         }
     }
 }

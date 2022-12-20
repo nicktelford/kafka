@@ -511,4 +511,9 @@ public class CachingKeyValueStore
             lock.writeLock().unlock();
         }
     }
+
+    @Override @SuppressWarnings("unchecked")
+    public StateStore newTransaction() {
+        return new CachingKeyValueStore((KeyValueStore<Bytes, byte[]>) wrapped().newTransaction(), timestampedSchema);
+    }
 }

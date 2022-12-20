@@ -27,6 +27,7 @@ import org.apache.kafka.streams.state.internals.RocksDBStore;
 import org.apache.kafka.streams.state.internals.RocksDBTimestampedSegmentedBytesStore;
 import org.apache.kafka.streams.state.internals.RocksDBTimestampedStore;
 import org.apache.kafka.streams.state.internals.RocksDBWindowStore;
+import org.apache.kafka.streams.state.internals.TransactionalKeyValueStore;
 import org.apache.kafka.streams.state.internals.WrappedStateStore;
 import org.junit.Test;
 
@@ -184,14 +185,22 @@ public class StoresTest {
 
     @Test
     public void shouldCreateRocksDbStore() {
+        final StateStore store = Stores.persistentKeyValueStore("store").get();
+        assertThat(store, instanceOf(TransactionalKeyValueStore.class));
+        final TransactionalKeyValueStore<?, ?, ?> transactionalStore = (TransactionalKeyValueStore<?, ?, ?>) store;
         assertThat(
-            Stores.persistentKeyValueStore("store").get(),
+            transactionalStore.wrapped(),
             allOf(not(instanceOf(RocksDBTimestampedStore.class)), instanceOf(RocksDBStore.class)));
     }
 
     @Test
     public void shouldCreateRocksDbTimestampedStore() {
-        assertThat(Stores.persistentTimestampedKeyValueStore("store").get(), instanceOf(RocksDBTimestampedStore.class));
+        final StateStore store = Stores.persistentTimestampedKeyValueStore("store").get();
+        assertThat(store, instanceOf(TransactionalKeyValueStore.class));
+        final TransactionalKeyValueStore<?, ?, ?> transactionalStore = (TransactionalKeyValueStore<?, ?, ?>) store;
+        assertThat(
+            transactionalStore.wrapped(),
+            instanceOf(RocksDBTimestampedStore.class));
     }
 
     @Test

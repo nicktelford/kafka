@@ -80,7 +80,6 @@ import org.rocksdb.Statistics;
 
 import java.io.File;
 import java.io.IOException;
-import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -888,6 +887,8 @@ public class RocksDBStoreTest extends AbstractKeyValueStoreTest {
             rocksDBStore.put(new Bytes(keyValue.key), keyValue.value);
         }
 
+        rocksDBStore.flush();
+
         int expectedIndex = 0;
         for (final KeyValue<byte[], byte[]> keyValue : keyValues) {
             final byte[] valBytes = rocksDBStore.get(new Bytes(keyValue.key));
@@ -932,6 +933,7 @@ public class RocksDBStoreTest extends AbstractKeyValueStoreTest {
         final byte[] key = "hello".getBytes();
         final byte[] value = "world".getBytes();
         rocksDBStore.put(Bytes.wrap(key), value);
+        rocksDBStore.flush();
 
         streamsMetrics.rocksDBMetricsRecordingTrigger().run();
 
@@ -965,15 +967,9 @@ public class RocksDBStoreTest extends AbstractKeyValueStoreTest {
         final byte[] key = "hello".getBytes();
         final byte[] value = "world".getBytes();
         rocksDBStore.put(Bytes.wrap(key), value);
+        rocksDBStore.flush();
 
-        final Metric numberOfEntriesActiveMemTable = metrics.metric(new MetricName(
-            "num-entries-active-mem-table",
-            StreamsMetricsImpl.STATE_STORE_LEVEL_GROUP,
-            "description is not verified",
-            streamsMetrics.storeLevelTagMap(taskId.toString(), METRICS_SCOPE, DB_NAME)
-        ));
-        assertThat(numberOfEntriesActiveMemTable, notNullValue());
-        assertThat((BigInteger) numberOfEntriesActiveMemTable.metricValue(), greaterThan(BigInteger.valueOf(0)));
+        assertThat(rocksDBStore.approximateNumEntries(), greaterThan(0L));
     }
 
     @Test

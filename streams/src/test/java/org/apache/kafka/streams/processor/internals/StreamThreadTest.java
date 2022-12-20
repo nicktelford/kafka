@@ -837,7 +837,9 @@ public class StreamThreadTest {
             topologyMetadata,
             null,
             null,
-            null
+            null,
+            -1L,
+            -1L
         ) {
             @Override
             int commit(final Collection<Task> tasksToCommit) {
@@ -941,7 +943,9 @@ public class StreamThreadTest {
             topologyMetadata,
             null,
             null,
-            null
+            null,
+            -1L,
+            -1L
         ) {
             @Override
             int commit(final Collection<Task> tasksToCommit) {

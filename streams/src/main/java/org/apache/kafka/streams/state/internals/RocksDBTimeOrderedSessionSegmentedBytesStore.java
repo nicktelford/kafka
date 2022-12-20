@@ -74,7 +74,7 @@ public class RocksDBTimeOrderedSessionSegmentedBytesStore extends AbstractRocksD
 
     public KeyValueIterator<Bytes, byte[]> fetchSessions(final long earliestSessionEndTime,
                                                          final long latestSessionEndTime) {
-        final List<KeyValueSegment> searchSpace = segments.segments(earliestSessionEndTime, latestSessionEndTime, true);
+        final List<TransactionalSegment<KeyValueSegment>> searchSpace = segments.segments(earliestSessionEndTime, latestSessionEndTime, true);
 
         // here we want [0, latestSE, FF] as the upper bound to cover any possible keys,
         // but since we can only get upper bound based on timestamps, we use a slight larger upper bound as [0, latestSE+1]
@@ -118,7 +118,7 @@ public class RocksDBTimeOrderedSessionSegmentedBytesStore extends AbstractRocksD
     }
 
     @Override
-    Map<KeyValueSegment, WriteBatch> getWriteBatches(
+    Map<TransactionalSegment<KeyValueSegment>, WriteBatch> getWriteBatches(
         final Collection<ConsumerRecord<byte[], byte[]>> records) {
         // advance stream time to the max timestamp in the batch
         for (final ConsumerRecord<byte[], byte[]> record : records) {
@@ -126,11 +126,11 @@ public class RocksDBTimeOrderedSessionSegmentedBytesStore extends AbstractRocksD
             observedStreamTime = Math.max(observedStreamTime, timestamp);
         }
 
-        final Map<KeyValueSegment, WriteBatch> writeBatchMap = new HashMap<>();
+        final Map<TransactionalSegment<KeyValueSegment>, WriteBatch> writeBatchMap = new HashMap<>();
         for (final ConsumerRecord<byte[], byte[]> record : records) {
             final long timestamp = SessionKeySchema.extractEndTimestamp(record.key());
             final long segmentId = segments.segmentId(timestamp);
-            final KeyValueSegment segment = segments.getOrCreateSegmentIfLive(segmentId, context, observedStreamTime);
+            final TransactionalSegment<KeyValueSegment> segment = segments.getOrCreateSegmentIfLive(segmentId, context, observedStreamTime);
             if (segment != null) {
                 ChangelogRecordDeserializationHelper.applyChecksAndUpdatePosition(
                     record,
@@ -161,7 +161,7 @@ public class RocksDBTimeOrderedSessionSegmentedBytesStore extends AbstractRocksD
 
     @Override
     protected IndexToBaseStoreIterator getIndexToBaseStoreIterator(
-        final SegmentIterator<KeyValueSegment> segmentIterator) {
+        final SegmentIterator<TransactionalSegment<KeyValueSegment>> segmentIterator) {
         return new SessionKeySchemaIndexToBaseStoreIterator(segmentIterator);
     }
 }

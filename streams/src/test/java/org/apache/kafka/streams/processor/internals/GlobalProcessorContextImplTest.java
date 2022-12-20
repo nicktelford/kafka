@@ -62,6 +62,7 @@ public class GlobalProcessorContextImplTest {
     public void setup() {
         final StreamsConfig streamsConfig = mock(StreamsConfig.class);
         expect(streamsConfig.getString(StreamsConfig.APPLICATION_ID_CONFIG)).andReturn("dummy-id");
+        expect(streamsConfig.getString(StreamsConfig.PROCESSING_GUARANTEE_CONFIG)).andStubReturn(StreamsConfig.AT_LEAST_ONCE);
         expect(streamsConfig.defaultValueSerde()).andReturn(Serdes.ByteArray());
         expect(streamsConfig.defaultKeySerde()).andReturn(Serdes.ByteArray());
         replay(streamsConfig);
