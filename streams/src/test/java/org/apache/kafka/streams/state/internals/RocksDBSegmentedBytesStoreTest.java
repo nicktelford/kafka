@@ -16,7 +16,7 @@
  */
 package org.apache.kafka.streams.state.internals;
 
-public class RocksDBSegmentedBytesStoreTest extends AbstractRocksDBSegmentedBytesStoreTest<KeyValueSegment> {
+public class RocksDBSegmentedBytesStoreTest extends AbstractRocksDBSegmentedBytesStoreTest<TransactionalSegment<KeyValueSegment>> {
 
     private final static String METRICS_SCOPE = "metrics-scope";
 

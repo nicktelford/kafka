@@ -18,14 +18,52 @@ package org.apache.kafka.streams.state.internals;
 
 import org.apache.kafka.common.utils.Bytes;
 import org.apache.kafka.common.utils.Utils;
+import org.apache.kafka.streams.KeyValue;
+import org.apache.kafka.streams.query.Position;
 import org.apache.kafka.streams.state.internals.metrics.RocksDBMetricsRecorder;
+import org.rocksdb.RocksDBException;
+import org.rocksdb.WriteBatchInterface;
 
-import java.io.File;
 import java.io.IOException;
-import java.util.Map;
 import java.util.Objects;
 
 class TimestampedSegment extends RocksDBTimestampedStore implements Comparable<TimestampedSegment>, Segment {
+    static class Transaction extends RocksDBTransaction<TimestampedSegment>
+            implements Comparable<TimestampedSegment.Transaction>, Segment {
+
+        Transaction(final ColumnFamilyAccessor cf, final Position position) {
+            super(cf, position);
+        }
+
+        @Override
+        public int compareTo(final Transaction other) {
+            return store.compareTo(other.store);
+        }
+
+        @Override
+        public void deleteRange(final Bytes keyFrom, final Bytes keyTo) {
+            cf.deleteRange(accessor, keyFrom.get(), Bytes.increment(keyTo).get());
+        }
+
+        @Override
+        public void addToBatch(final KeyValue<byte[], byte[]> record, final WriteBatchInterface batch)
+                throws RocksDBException {
+            cf.addToBatch(record.key, record.value, batch);
+        }
+
+        @Override
+        public void write(final WriteBatchInterface batch) throws RocksDBException {
+            // non-transactional
+            store.write(batch);
+        }
+
+        @Override
+        public void destroy() throws IOException {
+            // non-transactional, called after close()
+            store.destroy();
+        }
+    }
+
     public final long id;
 
     TimestampedSegment(final String segmentName,
@@ -52,12 +90,6 @@ class TimestampedSegment extends RocksDBTimestampedStore implements Comparable<T
     }
 
     @Override
-    public void openDB(final Map<String, Object> configs, final File stateDir) {
-        super.openDB(configs, stateDir);
-        // skip the registering step
-    }
-
-    @Override
     public String toString() {
         return "TimestampedSegment(id=" + id + ", name=" + name() + ")";
     }
@@ -74,5 +106,10 @@ class TimestampedSegment extends RocksDBTimestampedStore implements Comparable<T
     @Override
     public int hashCode() {
         return Objects.hash(id);
+    }
+
+    @Override
+    public RocksDBTransaction<? extends RocksDBStore> createTransaction() {
+        return new Transaction(cf, position);
     }
 }

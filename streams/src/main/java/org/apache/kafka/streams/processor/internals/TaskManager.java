@@ -98,6 +98,9 @@ public class TaskManager {
     private final StandbyTaskCreator standbyTaskCreator;
     private final StateUpdater stateUpdater;
 
+    private final long maxUncommittedStateRecords;
+    private final long maxUncommittedStateBytes;
+
     TaskManager(final Time time,
                 final ChangelogReader changelogReader,
                 final UUID processId,
@@ -108,7 +111,9 @@ public class TaskManager {
                 final TopologyMetadata topologyMetadata,
                 final Admin adminClient,
                 final StateDirectory stateDirectory,
-                final StateUpdater stateUpdater) {
+                final StateUpdater stateUpdater,
+                final long maxUncommittedStateBytes,
+                final long maxUncommittedStateRecords) {
         this.time = time;
         this.processId = processId;
         this.logPrefix = logPrefix;
@@ -131,6 +136,9 @@ public class TaskManager {
             topologyMetadata.taskExecutionMetadata(),
             logContext
         );
+
+        this.maxUncommittedStateRecords = maxUncommittedStateRecords;
+        this.maxUncommittedStateBytes = maxUncommittedStateBytes;
     }
 
     void setMainConsumer(final Consumer<byte[], byte[]> mainConsumer) {
@@ -1638,6 +1646,11 @@ public class TaskManager {
 
             activeTask.addRecords(partition, records.records(partition));
         }
+    }
+
+    boolean needsCommit() {
+        return (maxUncommittedStateRecords > -1 && tasks.approximateUncommittedStateEntries() > maxUncommittedStateRecords)
+                || (maxUncommittedStateBytes > -1 && tasks.approximateUncommittedStateBytes() > maxUncommittedStateBytes);
     }
 
     /**

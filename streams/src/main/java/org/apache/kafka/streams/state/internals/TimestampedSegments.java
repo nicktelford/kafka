@@ -17,13 +17,14 @@
 package org.apache.kafka.streams.state.internals;
 
 import org.apache.kafka.streams.processor.ProcessorContext;
+import org.apache.kafka.streams.processor.StateStoreContext;
 import org.apache.kafka.streams.processor.internals.ProcessorContextUtils;
 import org.apache.kafka.streams.state.internals.metrics.RocksDBMetricsRecorder;
 
 /**
  * Manages the {@link TimestampedSegment}s that are used by the {@link RocksDBTimestampedSegmentedBytesStore}
  */
-class TimestampedSegments extends AbstractSegments<TimestampedSegment> {
+class TimestampedSegments extends AbstractSegments<TransactionalSegment<TimestampedSegment>> {
 
     private final RocksDBMetricsRecorder metricsRecorder;
 
@@ -36,28 +37,28 @@ class TimestampedSegments extends AbstractSegments<TimestampedSegment> {
     }
 
     @Override
-    public TimestampedSegment getOrCreateSegment(final long segmentId,
+    public TransactionalSegment<TimestampedSegment> getOrCreateSegment(final long segmentId,
                                                  final ProcessorContext context) {
         if (segments.containsKey(segmentId)) {
             return segments.get(segmentId);
         } else {
-            final TimestampedSegment newSegment =
-                new TimestampedSegment(segmentName(segmentId), name, segmentId, metricsRecorder);
+            final TransactionalSegment<TimestampedSegment> newSegment =
+                    new TransactionalSegment<>(new TimestampedSegment(segmentName(segmentId), name, segmentId, metricsRecorder));
 
             if (segments.put(segmentId, newSegment) != null) {
                 throw new IllegalStateException("TimestampedSegment already exists. Possible concurrent access.");
             }
 
-            newSegment.openDB(context.appConfigs(), context.stateDir());
+            newSegment.init((StateStoreContext) context, null);
             return newSegment;
         }
     }
 
     @Override
-    public TimestampedSegment getOrCreateSegmentIfLive(final long segmentId,
+    public TransactionalSegment<TimestampedSegment> getOrCreateSegmentIfLive(final long segmentId,
                                                     final ProcessorContext context,
                                                     final long streamTime) {
-        final TimestampedSegment segment = super.getOrCreateSegmentIfLive(segmentId, context, streamTime);
+        final TransactionalSegment<TimestampedSegment> segment = super.getOrCreateSegmentIfLive(segmentId, context, streamTime);
         cleanupExpiredSegments(streamTime);
         return segment;
     }

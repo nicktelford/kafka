@@ -369,4 +369,18 @@ class Tasks implements TasksRegistry {
     public boolean contains(final TaskId taskId) {
         return getTask(taskId) != null;
     }
+
+    @Override
+    public long approximateUncommittedStateBytes() {
+        return activeTasksPerId.values().stream()
+                .map(task -> task.stateManager().approximateNumUncommittedBytes())
+                .reduce(0L, Long::sum);
+    }
+
+    @Override
+    public long approximateUncommittedStateEntries() {
+        return activeTasksPerId.values().stream()
+                .map(task -> task.stateManager().approximateNumUncommittedEntries())
+                .reduce(0L, Long::sum);
+    }
 }

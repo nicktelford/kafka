@@ -485,7 +485,7 @@ public class ProcessorStateManagerTest {
     }
 
     @Test
-    public void shouldInitializeOffsetsFromCheckpointFileAndDeleteIfEOSEnabled() throws IOException {
+    public void shouldInitializeOffsetsFromCheckpointFileIfEOSEnabled() throws IOException {
         final long checkpointOffset = 10L;
 
         final Map<TopicPartition, Long> offsets = mkMap(
@@ -503,7 +503,7 @@ public class ProcessorStateManagerTest {
             stateMgr.registerStore(nonPersistentStore, nonPersistentStore.stateRestoreCallback, null);
             stateMgr.initializeStoreOffsetsFromCheckpoint(true);
 
-            assertFalse(checkpointFile.exists());
+            assertTrue(checkpointFile.exists());
             assertEquals(mkSet(
                     persistentStorePartition,
                     persistentStoreTwoPartition,
@@ -1043,36 +1043,6 @@ public class ProcessorStateManagerTest {
         final ProcessorStateManager stateMgr = getStateManager(Task.TaskType.ACTIVE, true);
 
         stateMgr.close();
-    }
-
-    @Test
-    public void shouldDeleteCheckPointFileIfEosEnabled() throws IOException {
-        final long checkpointOffset = 10L;
-        final Map<TopicPartition, Long> offsets = mkMap(
-                mkEntry(persistentStorePartition, checkpointOffset),
-                mkEntry(nonPersistentStorePartition, checkpointOffset),
-                mkEntry(irrelevantPartition, 999L)
-        );
-        checkpoint.write(offsets);
-        final ProcessorStateManager stateMgr = getStateManager(Task.TaskType.ACTIVE, true);
-        stateMgr.deleteCheckPointFileIfEOSEnabled();
-        stateMgr.close();
-        assertFalse(checkpointFile.exists());
-    }
-
-    @Test
-    public void shouldNotDeleteCheckPointFileIfEosNotEnabled() throws IOException {
-        final long checkpointOffset = 10L;
-        final Map<TopicPartition, Long> offsets = mkMap(
-                mkEntry(persistentStorePartition, checkpointOffset),
-                mkEntry(nonPersistentStorePartition, checkpointOffset),
-                mkEntry(irrelevantPartition, 999L)
-        );
-        checkpoint.write(offsets);
-        final ProcessorStateManager stateMgr = getStateManager(Task.TaskType.ACTIVE, false);
-        stateMgr.deleteCheckPointFileIfEOSEnabled();
-        stateMgr.close();
-        assertTrue(checkpointFile.exists());
     }
 
     @Test

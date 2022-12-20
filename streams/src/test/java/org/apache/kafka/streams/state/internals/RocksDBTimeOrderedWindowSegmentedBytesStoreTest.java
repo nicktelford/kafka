@@ -29,7 +29,7 @@ import org.junit.runners.Parameterized;
 
 @RunWith(Parameterized.class)
 public class RocksDBTimeOrderedWindowSegmentedBytesStoreTest
-    extends AbstractDualSchemaRocksDBSegmentedBytesStoreTest<KeyValueSegment> {
+    extends AbstractDualSchemaRocksDBSegmentedBytesStoreTest<TransactionalSegment<KeyValueSegment>> {
 
     private final static String METRICS_SCOPE = "metrics-scope";
 
@@ -59,7 +59,7 @@ public class RocksDBTimeOrderedWindowSegmentedBytesStoreTest
     }
 
 
-    AbstractDualSchemaRocksDBSegmentedBytesStore<KeyValueSegment> getBytesStore() {
+    AbstractDualSchemaRocksDBSegmentedBytesStore<TransactionalSegment<KeyValueSegment>> getBytesStore() {
         switch (schemaType) {
             case WindowSchemaWithIndex:
             case WindowSchemaWithoutIndex:

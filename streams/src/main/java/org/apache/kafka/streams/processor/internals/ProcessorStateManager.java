@@ -260,9 +260,8 @@ public class ProcessorStateManager implements StateManager {
                         log.debug("State store {} initialized from checkpoint with offset {} at changelog {}",
                                   store.stateStore.name(), store.offset, store.changelogPartition);
                     } else {
-                        // with EOS, if the previous run did not shutdown gracefully, we may lost the checkpoint file
-                        // and hence we are uncertain that the current local state only contains committed data;
-                        // in that case we need to treat it as a task-corrupted exception
+                        // with EOS, if the checkpoint file has gone missing, we don't know what state is on-disk
+                        // so we have to treat it as corrupted and wipe it all out
                         if (eosEnabled && !storeDirIsEmpty) {
                             log.warn("State store {} did not find checkpoint offsets while stores are not empty, " +
                                 "since under EOS it has the risk of getting uncommitted data in stores we have to " +
@@ -285,10 +284,6 @@ public class ProcessorStateManager implements StateManager {
 
             if (!loadedCheckpoints.isEmpty()) {
                 log.warn("Some loaded checkpoint offsets cannot find their corresponding state stores: {}", loadedCheckpoints);
-            }
-
-            if (eosEnabled) {
-                checkpointFile.delete();
             }
         } catch (final TaskCorruptedException e) {
             throw e;
@@ -724,9 +719,17 @@ public class ProcessorStateManager implements StateManager {
         return storeToChangelogTopic.get(storeName);
     }
 
-    public void deleteCheckPointFileIfEOSEnabled() throws IOException {
-        if (eosEnabled) {
-            checkpointFile.delete();
-        }
+    @Override
+    public long approximateNumUncommittedEntries() {
+        return stores.values().stream()
+                .map(metadata -> metadata.store().approximateNumUncommittedEntries())
+                .reduce(0L, Long::sum);
+    }
+
+    @Override
+    public long approximateNumUncommittedBytes() {
+        return stores.values().stream()
+                .map(metadata -> metadata.store().approximateNumUncommittedBytes())
+                .reduce(0L, Long::sum);
     }
 }

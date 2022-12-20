@@ -151,4 +151,19 @@ public abstract class WrappedStateStore<S extends StateStore, K, V> implements S
     public S wrapped() {
         return wrapped;
     }
+
+    @Override
+    public long approximateNumUncommittedEntries() {
+        return wrapped.approximateNumUncommittedEntries();
+    }
+
+    @Override
+    public long approximateNumUncommittedBytes() {
+        return wrapped.approximateNumUncommittedBytes();
+    }
+
+    @Override
+    public StateStore newTransaction() {
+        return wrapped.newTransaction();
+    }
 }

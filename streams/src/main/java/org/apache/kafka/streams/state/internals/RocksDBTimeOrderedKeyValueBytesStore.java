@@ -41,12 +41,12 @@ public class RocksDBTimeOrderedKeyValueBytesStore extends AbstractRocksDBTimeOrd
     }
 
     @Override
-    Map<KeyValueSegment, WriteBatch> getWriteBatches(final Collection<ConsumerRecord<byte[], byte[]>> records) {
+    Map<TransactionalSegment<KeyValueSegment>, WriteBatch> getWriteBatches(final Collection<ConsumerRecord<byte[], byte[]>> records) {
         throw new UnsupportedOperationException("Do not use for TimeOrderedKeyValueStore");
     }
 
     @Override
-    protected IndexToBaseStoreIterator getIndexToBaseStoreIterator(final SegmentIterator<KeyValueSegment> segmentIterator) {
+    protected IndexToBaseStoreIterator getIndexToBaseStoreIterator(final SegmentIterator<TransactionalSegment<KeyValueSegment>> segmentIterator) {
         throw new UnsupportedOperationException("Do not use for TimeOrderedKeyValueStore");
     }
 }
