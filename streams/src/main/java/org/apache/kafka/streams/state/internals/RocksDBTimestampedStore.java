@@ -63,29 +63,33 @@ public class RocksDBTimestampedStore extends RocksDBStore implements Timestamped
 
     @Override
     void openRocksDB(final DBOptions dbOptions,
-                     final ColumnFamilyOptions columnFamilyOptions) {
+                     final ColumnFamilyOptions columnFamilyOptions,
+                     final ColumnFamilyOptions offsetsColumnFamilyOptions) {
         final List<ColumnFamilyHandle> columnFamilies = openRocksDB(
                 dbOptions,
                 new ColumnFamilyDescriptor(RocksDB.DEFAULT_COLUMN_FAMILY, columnFamilyOptions),
-                new ColumnFamilyDescriptor(TIMESTAMPED_VALUES_COLUMN_FAMILY_NAME, columnFamilyOptions)
+                new ColumnFamilyDescriptor(TIMESTAMPED_VALUES_COLUMN_FAMILY_NAME, columnFamilyOptions),
+                new ColumnFamilyDescriptor(OFFSETS_COLUMN_FAMILY_NAME, columnFamilyOptions)
         );
         final ColumnFamilyHandle noTimestampColumnFamily = columnFamilies.get(0);
         final ColumnFamilyHandle withTimestampColumnFamily = columnFamilies.get(1);
+
+        offsetsCF = columnFamilies.get(2);
 
         final RocksIterator noTimestampsIter = db.newIterator(noTimestampColumnFamily);
         noTimestampsIter.seekToFirst();
         if (noTimestampsIter.isValid()) {
             log.info("Opening store {} in upgrade mode", name);
-            dbAccessor = new DualColumnFamilyAccessor(noTimestampColumnFamily, withTimestampColumnFamily);
+            cf = new DualColumnFamilyAccessor(noTimestampColumnFamily, withTimestampColumnFamily);
         } else {
             log.info("Opening store {} in regular mode", name);
-            dbAccessor = new SingleColumnFamilyAccessor(withTimestampColumnFamily);
+            cf = new SingleColumnFamilyAccessor(withTimestampColumnFamily);
             noTimestampColumnFamily.close();
         }
         noTimestampsIter.close();
     }
 
-    private class DualColumnFamilyAccessor implements RocksDBAccessor {
+    private class DualColumnFamilyAccessor implements ColumnFamilyAccessor {
         private final ColumnFamilyHandle oldColumnFamily;
         private final ColumnFamilyHandle newColumnFamily;
 
@@ -96,31 +100,31 @@ public class RocksDBTimestampedStore extends RocksDBStore implements Timestamped
         }
 
         @Override
-        public void put(final byte[] key,
+        public void put(final DBAccessor accessor,
+                        final byte[] key,
                         final byte[] valueWithTimestamp) {
             if (valueWithTimestamp == null) {
                 try {
-                    db.delete(oldColumnFamily, wOptions, key);
+                    accessor.delete(oldColumnFamily, key);
                 } catch (final RocksDBException e) {
                     // String format is happening in wrapping stores. So formatted message is thrown from wrapping stores.
                     throw new ProcessorStateException("Error while removing key from store " + name, e);
                 }
                 try {
-                    db.delete(newColumnFamily, wOptions, key);
+                    accessor.delete(newColumnFamily, key);
                 } catch (final RocksDBException e) {
                     // String format is happening in wrapping stores. So formatted message is thrown from wrapping stores.
                     throw new ProcessorStateException("Error while removing key from store " + name, e);
                 }
             } else {
                 try {
-                    db.delete(oldColumnFamily, wOptions, key);
+                    accessor.delete(oldColumnFamily, key);
                 } catch (final RocksDBException e) {
                     // String format is happening in wrapping stores. So formatted message is thrown from wrapping stores.
                     throw new ProcessorStateException("Error while removing key from store " + name, e);
                 }
                 try {
-                    db.put(newColumnFamily, wOptions, key, valueWithTimestamp);
-                    StoreQueryUtils.updatePosition(position, context);
+                    accessor.put(newColumnFamily, key, valueWithTimestamp);
                 } catch (final RocksDBException e) {
                     // String format is happening in wrapping stores. So formatted message is thrown from wrapping stores.
                     throw new ProcessorStateException("Error while putting key/value into store " + name, e);
@@ -138,33 +142,32 @@ public class RocksDBTimestampedStore extends RocksDBStore implements Timestamped
         }
 
         @Override
-        public byte[] get(final byte[] key) throws RocksDBException {
-            final byte[] valueWithTimestamp = db.get(newColumnFamily, key);
+        public byte[] get(final DBAccessor accessor, final byte[] key) throws RocksDBException {
+            final byte[] valueWithTimestamp = accessor.get(newColumnFamily, key);
             if (valueWithTimestamp != null) {
                 return valueWithTimestamp;
             }
 
-            final byte[] plainValue = db.get(oldColumnFamily, key);
+            final byte[] plainValue = accessor.get(oldColumnFamily, key);
             if (plainValue != null) {
                 final byte[] valueWithUnknownTimestamp = convertToTimestampedFormat(plainValue);
                 // this does only work, because the changelog topic contains correct data already
                 // for other format changes, we cannot take this short cut and can only migrate data
                 // from old to new store on put()
-                put(key, valueWithUnknownTimestamp);
+                put(accessor, key, valueWithUnknownTimestamp);
                 return valueWithUnknownTimestamp;
             }
-
             return null;
         }
 
         @Override
-        public byte[] getOnly(final byte[] key) throws RocksDBException {
-            final byte[] valueWithTimestamp = db.get(newColumnFamily, key);
+        public byte[] getOnly(final DBAccessor accessor, final byte[] key) throws RocksDBException {
+            final byte[] valueWithTimestamp = accessor.get(newColumnFamily, key);
             if (valueWithTimestamp != null) {
                 return valueWithTimestamp;
             }
 
-            final byte[] plainValue = db.get(oldColumnFamily, key);
+            final byte[] plainValue = accessor.get(oldColumnFamily, key);
             if (plainValue != null) {
                 return convertToTimestampedFormat(plainValue);
             }
@@ -173,13 +176,14 @@ public class RocksDBTimestampedStore extends RocksDBStore implements Timestamped
         }
 
         @Override
-        public ManagedKeyValueIterator<Bytes, byte[]> range(final Bytes from,
-                                                     final Bytes to,
-                                                     final boolean forward) {
+        public ManagedKeyValueIterator<Bytes, byte[]> range(final DBAccessor accessor,
+                                                            final Bytes from,
+                                                            final Bytes to,
+                                                            final boolean forward) {
             return new RocksDBDualCFRangeIterator(
                 name,
-                db.newIterator(newColumnFamily),
-                db.newIterator(oldColumnFamily),
+                accessor.newIterator(newColumnFamily),
+                accessor.newIterator(oldColumnFamily),
                 from,
                 to,
                 forward,
@@ -187,15 +191,15 @@ public class RocksDBTimestampedStore extends RocksDBStore implements Timestamped
         }
 
         @Override
-        public void deleteRange(final byte[] from, final byte[] to) {
+        public void deleteRange(final DBAccessor accessor, final byte[] from, final byte[] to) {
             try {
-                db.deleteRange(oldColumnFamily, wOptions, from, to);
+                accessor.deleteRange(oldColumnFamily, from, to);
             } catch (final RocksDBException e) {
                 // String format is happening in wrapping stores. So formatted message is thrown from wrapping stores.
                 throw new ProcessorStateException("Error while removing key from store " + name, e);
             }
             try {
-                db.deleteRange(newColumnFamily, wOptions, from, to);
+                accessor.deleteRange(newColumnFamily, from, to);
             } catch (final RocksDBException e) {
                 // String format is happening in wrapping stores. So formatted message is thrown from wrapping stores.
                 throw new ProcessorStateException("Error while removing key from store " + name, e);
@@ -203,9 +207,9 @@ public class RocksDBTimestampedStore extends RocksDBStore implements Timestamped
         }
 
         @Override
-        public ManagedKeyValueIterator<Bytes, byte[]> all(final boolean forward) {
-            final RocksIterator innerIterWithTimestamp = db.newIterator(newColumnFamily);
-            final RocksIterator innerIterNoTimestamp = db.newIterator(oldColumnFamily);
+        public ManagedKeyValueIterator<Bytes, byte[]> all(final DBAccessor accessor, final boolean forward) {
+            final RocksIterator innerIterWithTimestamp = accessor.newIterator(newColumnFamily);
+            final RocksIterator innerIterNoTimestamp = accessor.newIterator(oldColumnFamily);
             if (forward) {
                 innerIterWithTimestamp.seekToFirst();
                 innerIterNoTimestamp.seekToFirst();
@@ -217,12 +221,12 @@ public class RocksDBTimestampedStore extends RocksDBStore implements Timestamped
         }
 
         @Override
-        public ManagedKeyValueIterator<Bytes, byte[]> prefixScan(final Bytes prefix) {
+        public ManagedKeyValueIterator<Bytes, byte[]> prefixScan(final DBAccessor accessor, final Bytes prefix) {
             final Bytes to = incrementWithoutOverflow(prefix);
             return new RocksDBDualCFRangeIterator(
                 name,
-                db.newIterator(newColumnFamily),
-                db.newIterator(oldColumnFamily),
+                accessor.newIterator(newColumnFamily),
+                accessor.newIterator(oldColumnFamily),
                 prefix,
                 to,
                 true,
@@ -231,15 +235,9 @@ public class RocksDBTimestampedStore extends RocksDBStore implements Timestamped
         }
 
         @Override
-        public long approximateNumEntries() throws RocksDBException {
-            return db.getLongProperty(oldColumnFamily, "rocksdb.estimate-num-keys")
-                + db.getLongProperty(newColumnFamily, "rocksdb.estimate-num-keys");
-        }
-
-        @Override
-        public void flush() throws RocksDBException {
-            db.flush(fOptions, oldColumnFamily);
-            db.flush(fOptions, newColumnFamily);
+        public long approximateNumEntries(final DBAccessor accessor) throws RocksDBException {
+            return accessor.approximateNumEntries(oldColumnFamily) +
+                    accessor.approximateNumEntries(newColumnFamily);
         }
 
         @Override
