@@ -16,6 +16,7 @@
  */
 package org.apache.kafka.streams.processor.api;
 
+import org.apache.kafka.common.IsolationLevel;
 import org.apache.kafka.common.metrics.MetricConfig;
 import org.apache.kafka.common.metrics.Metrics;
 import org.apache.kafka.common.metrics.Sensor;
@@ -25,6 +26,7 @@ import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.StreamsMetrics;
 import org.apache.kafka.streams.Topology;
 import org.apache.kafka.streams.TopologyTestDriver;
+import org.apache.kafka.streams.internals.StreamsConfigUtils;
 import org.apache.kafka.streams.kstream.Transformer;
 import org.apache.kafka.streams.kstream.ValueTransformer;
 import org.apache.kafka.streams.processor.Cancellable;
@@ -521,6 +523,7 @@ public class MockProcessorContext<KForward, VForward> implements ProcessorContex
             public void register(final StateStore store,
                                  final StateRestoreCallback stateRestoreCallback,
                                  final CommitCallback checkpoint) {
+                if (store == null) return;
                 stateStores.put(store.name(), store);
             }
 

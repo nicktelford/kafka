@@ -370,14 +370,6 @@ public class StreamTask extends AbstractTask implements ProcessorNodePunctuator,
                 // just transit the state without any logical changes: suspended and restoring states
                 // are not actually any different for inner modules
 
-                // Deleting checkpoint file before transition to RESTORING state (KAFKA-10362)
-                try {
-                    stateMgr.deleteCheckPointFileIfEOSEnabled();
-                    log.debug("Deleted check point file upon resuming with EOS enabled");
-                } catch (final IOException ioe) {
-                    log.error("Encountered error while deleting the checkpoint file due to this exception", ioe);
-                }
-
                 transitionTo(State.RESTORING);
                 log.info("Resumed to restoring state");
 
@@ -506,9 +498,7 @@ public class StreamTask extends AbstractTask implements ProcessorNodePunctuator,
                 break;
 
             case RUNNING:
-                if (enforceCheckpoint || !eosEnabled) {
-                    maybeCheckpoint(enforceCheckpoint);
-                }
+                maybeCheckpoint(enforceCheckpoint);
                 log.debug("Finalized commit for {} task with eos {} enforce checkpoint {}", state(), eosEnabled, enforceCheckpoint);
 
                 break;

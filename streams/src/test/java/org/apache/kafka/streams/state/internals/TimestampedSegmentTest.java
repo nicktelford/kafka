@@ -16,10 +16,11 @@
  */
 package org.apache.kafka.streams.state.internals;
 
+import org.apache.kafka.common.IsolationLevel;
 import org.apache.kafka.common.metrics.Metrics;
 import org.apache.kafka.common.utils.MockTime;
 import org.apache.kafka.streams.StreamsConfig;
-import org.apache.kafka.streams.processor.ProcessorContext;
+import org.apache.kafka.streams.processor.StateStoreContext;
 import org.apache.kafka.streams.processor.TaskId;
 import org.apache.kafka.streams.processor.internals.metrics.StreamsMetricsImpl;
 import org.apache.kafka.streams.state.internals.metrics.RocksDBMetricsRecorder;
@@ -62,11 +63,13 @@ public class TimestampedSegmentTest {
         final String directoryPath = TestUtils.tempDirectory().getAbsolutePath();
         final File directory = new File(directoryPath);
 
-        final ProcessorContext mockContext = mock(ProcessorContext.class);
+        final StateStoreContext mockContext = mock(StateStoreContext.class);
         expect(mockContext.appConfigs()).andReturn(mkMap(mkEntry(METRICS_RECORDING_LEVEL_CONFIG, "INFO")));
         expect(mockContext.stateDir()).andReturn(directory);
+        expect(mockContext.isolationLevel()).andReturn(IsolationLevel.READ_UNCOMMITTED);
         replay(mockContext);
 
+        segment.context = mockContext;
         segment.openDB(mockContext.appConfigs(), mockContext.stateDir());
 
         assertTrue(new File(directoryPath, "window").exists());

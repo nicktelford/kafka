@@ -68,7 +68,6 @@ import org.apache.kafka.test.MockTimestampExtractor;
 import org.apache.kafka.test.TestUtils;
 import org.easymock.EasyMock;
 import org.easymock.EasyMockRunner;
-import org.easymock.IMocksControl;
 import org.easymock.Mock;
 import org.easymock.MockType;
 import org.junit.After;
@@ -318,40 +317,6 @@ public class StreamTaskTest {
 
         // should fail if lock is called
         EasyMock.verify(stateDirectory);
-    }
-
-    @Test
-    public void shouldAttemptToDeleteStateDirectoryWhenCloseDirtyAndEosEnabled() throws IOException {
-        final IMocksControl ctrl = EasyMock.createStrictControl();
-        final ProcessorStateManager stateManager = ctrl.createMock(ProcessorStateManager.class);
-        EasyMock.expect(stateManager.taskType()).andStubReturn(TaskType.ACTIVE);
-        stateDirectory = ctrl.createMock(StateDirectory.class);
-
-        stateManager.registerGlobalStateStores(emptyList());
-        EasyMock.expectLastCall();
-
-        EasyMock.expect(stateManager.taskId()).andReturn(taskId);
-
-        EasyMock.expect(stateDirectory.lock(taskId)).andReturn(true);
-
-        stateManager.close();
-        EasyMock.expectLastCall();
-
-        // The `baseDir` will be accessed when attempting to delete the state store.
-        EasyMock.expect(stateManager.baseDir()).andReturn(TestUtils.tempDirectory("state_store"));
-
-        stateDirectory.unlock(taskId);
-        EasyMock.expectLastCall();
-
-        ctrl.checkOrder(true);
-        ctrl.replay();
-
-        task = createStatefulTask(createConfig(StreamsConfig.EXACTLY_ONCE_V2, "100"), true, stateManager);
-        task.suspend();
-        task.closeDirty();
-        task = null;
-
-        ctrl.verify();
     }
 
     @Test
@@ -1644,28 +1609,6 @@ public class StreamTaskTest {
 
         EasyMock.verify(recordCollector);
         assertThat("Map was empty", task.highWaterMark().size() == 2);
-    }
-
-    @Test
-    public void shouldNotCheckpointOffsetsOnCommitIfEosIsEnabled() {
-        EasyMock.expect(stateManager.changelogPartitions()).andReturn(singleton(changelogPartition));
-        stateManager.registerStore(stateStore, stateStore.stateRestoreCallback, null);
-        EasyMock.expectLastCall();
-        EasyMock.expect(recordCollector.offsets()).andReturn(emptyMap()).anyTimes();
-        EasyMock.replay(stateManager, recordCollector);
-
-        task = createStatefulTask(createConfig(StreamsConfig.EXACTLY_ONCE_V2, "100"), true);
-
-        task.initializeIfNeeded();
-        task.completeRestoration(noOpResetter -> { });
-        task.prepareCommit();
-        task.postCommit(false);
-        final File checkpointFile = new File(
-            stateDirectory.getOrCreateDirectoryForTask(taskId),
-            StateManagerUtil.CHECKPOINT_FILE_NAME
-        );
-
-        assertFalse(checkpointFile.exists());
     }
 
     @SuppressWarnings("unchecked")
