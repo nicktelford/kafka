@@ -21,7 +21,6 @@ import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.errors.InvalidStateStoreException;
 import org.apache.kafka.streams.processor.StateStoreContext;
 import org.apache.kafka.streams.state.KeyValueIterator;
-import org.apache.kafka.streams.state.KeyValueStore;
 import org.apache.kafka.test.InternalMockProcessorContext;
 import org.apache.kafka.test.StreamsTestUtils;
 import org.apache.kafka.test.TestUtils;
@@ -37,7 +36,6 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.core.IsEqual.equalTo;
 import static org.hamcrest.core.Is.is;
 import static org.hamcrest.core.IsNot.not;
-import static org.hamcrest.core.IsSame.sameInstance;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @RunWith(Parameterized.class)
@@ -104,10 +102,14 @@ public class TransactionalKeyValueStoreTest {
     }
 
     @Test
-    public void shouldCycleTransactionOnStoreFlush() {
-        final KeyValueStore<Bytes, byte[]> initialTransaction = store.currentTransaction;
+    public void shouldResetTransactionOnFlush() {
+        store.put(KEY_1_BYTES, VALUE_ABC_BYTES);
+        assertThat(store.approximateNumUncommittedEntries(), is(1L));
+        assertThat(store.approximateNumUncommittedBytes(), is((long) KEY_1_BYTES.get().length + VALUE_ABC_BYTES.length));
         store.flush();
-        assertThat(store.currentTransaction, is(not(sameInstance(initialTransaction))));
+        assertThat(store.currentTransaction.isOpen(), is(true));
+        assertThat(store.approximateNumUncommittedBytes(), is(0L));
+        assertThat(store.approximateNumUncommittedEntries(), is(0L));
     }
 
     @Test
@@ -121,6 +123,14 @@ public class TransactionalKeyValueStoreTest {
         final KeyValueIterator<Bytes, byte[]> it = store.all();
         assertThat(it.hasNext(), is(false));
         store.flush();
+        assertThrows(InvalidStateStoreException.class, it::hasNext);
+    }
+
+    @Test
+    public void shouldCloseOpenIteratorsOnClose() {
+        final KeyValueIterator<Bytes, byte[]> it = store.all();
+        assertThat(it.hasNext(), is(false));
+        store.close();
         assertThrows(InvalidStateStoreException.class, it::hasNext);
     }
 }

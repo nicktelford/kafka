@@ -106,6 +106,29 @@ public interface Transaction extends StateStore, AutoCloseable {
     }
 
     /**
+     * Creates a new {@link Transaction} from an existing transaction.
+     * <p>
+     * This enables potentially re-using resources from an existing, no longer in-use transaction, instead of creating
+     * a new one.
+     * <p>
+     * This method should only be called if the current transaction is guaranteed to no longer be in-use.
+     * Implementations may return either a new Transaction instance, or a reference to themselves, only if they are able
+     * to reset to being available for use.
+     * <p>
+     * {@link Transaction Transactions} are <em>not thread-safe</em>, and should not be shared among threads. New
+     * threads should use this method to create a new transaction, instead of sharing an existing one.
+     * <p>
+     * Transactions created by this method will have the same {@link IsolationLevel} as the {@link StateStoreContext}
+     * that this store was {@link #init(StateStoreContext, StateStore) initialized with}.
+     *
+     * @return A new {@link Transaction} to control reads/writes to this {@link StateStore}. The Transaction
+     *         <em>MUST</em> be {@link Transaction#flush() committed} or {@link Transaction#close() closed} when you
+     *         are finished with it, to prevent resource leaks.
+     */
+    @Override
+    StateStore newTransaction();
+
+    /**
      * Is this transaction is open for reading and writing.
      * @return {@code true} if this Transaction can be read from/written to, or {@code false} if it is no longer
      *         accessible.

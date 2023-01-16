@@ -50,10 +50,16 @@ public class TransactionalKeyValueStore<S extends KeyValueStore<K, V>, K, V>
         }
     }
 
-    @Override
+    @Override @SuppressWarnings("unchecked")
     public void flush() {
         currentTransaction.flush();
-        currentTransaction = newTransaction();
+        currentTransaction = (KeyValueStore<K, V>) currentTransaction.newTransaction();
+    }
+
+    @Override
+    public void close() {
+        if (currentTransaction != null) currentTransaction.close();
+        super.close();
     }
 
     @Override
