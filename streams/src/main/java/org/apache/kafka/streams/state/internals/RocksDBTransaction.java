@@ -105,7 +105,7 @@ class RocksDBTransaction<S extends RocksDBStore> extends AbstractTransaction<S> 
 
     private static final Logger log = LoggerFactory.getLogger(RocksDBTransaction.class);
     protected final RocksDBStore.ColumnFamilyAccessor cf;
-    protected RocksDBStore.DBAccessor accessor;
+    protected BatchedDBAccessor accessor;
     protected final Position position;
     private final WriteBatchWithIndex batch = new WriteBatchWithIndex(true);
     final Set<KeyValueIterator<Bytes, byte[]>> openIterators = new HashSet<>();
@@ -119,6 +119,13 @@ class RocksDBTransaction<S extends RocksDBStore> extends AbstractTransaction<S> 
     public void init(final StateStoreContext context, final StateStore root) {
         super.init(context, root);
         this.accessor = new BatchedDBAccessor(store.db, batch, store.rOptions);
+    }
+
+    @Override
+    public StateStore newTransaction() {
+        if (isOpen || !batch.isOwningHandle()) return super.newTransaction();
+        isOpen = true;
+        return this;
     }
 
     @Override
@@ -282,7 +289,9 @@ class RocksDBTransaction<S extends RocksDBStore> extends AbstractTransaction<S> 
         } catch (final RocksDBException e) {
             throw new ProcessorStateException("Error while executing flush from store " + store.name, e);
         } finally {
-            closeTransaction();
+            closeOpenIterators();
+            batch.clear();
+            accessor.uncommittedBytes = 0;
         }
     }
 
