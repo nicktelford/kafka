@@ -26,6 +26,8 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 
+import java.util.Collections;
+
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.core.IsEqual.equalTo;
 import static org.hamcrest.core.Is.is;
@@ -100,7 +102,7 @@ public class RocksDBTransactionTest extends AbstractTransactionTest {
         try (final RocksDBTransaction<RocksDBStore> transaction = transaction()) {
             transaction.put(KEY_1_BYTES, VALUE_ABC_BYTES);
             assertThat(store().get(KEY_1_BYTES), is(equalTo(null)));
-            transaction.flush();
+            transaction.commit(Collections.emptyMap());
         }
         assertThat(store().get(KEY_1_BYTES), is(VALUE_ABC_BYTES));
     }
@@ -119,7 +121,7 @@ public class RocksDBTransactionTest extends AbstractTransactionTest {
         try (final RocksDBTransaction<RocksDBStore> transaction = transaction()) {
             final KeyValueIterator<Bytes, byte[]> it = transaction.all();
             assertThat(it.hasNext(), is(false));
-            transaction.flush();
+            transaction.commit(Collections.emptyMap());
             assertThrows(InvalidStateStoreException.class, it::hasNext);
         }
     }

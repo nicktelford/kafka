@@ -17,7 +17,10 @@
 package org.apache.kafka.streams.state.internals;
 
 import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.metrics.Sensor.RecordingLevel;
+import org.apache.kafka.common.serialization.Deserializer;
+import org.apache.kafka.common.serialization.Serdes;
 import org.apache.kafka.common.serialization.Serializer;
 import org.apache.kafka.common.utils.Bytes;
 import org.apache.kafka.common.utils.Utils;
@@ -27,6 +30,7 @@ import org.apache.kafka.streams.errors.InvalidStateStoreException;
 import org.apache.kafka.streams.errors.ProcessorStateException;
 import org.apache.kafka.streams.processor.StateStore;
 import org.apache.kafka.streams.processor.StateStoreContext;
+import org.apache.kafka.streams.processor.api.RecordMetadata;
 import org.apache.kafka.streams.processor.internals.ChangelogRecordDeserializationHelper;
 import org.apache.kafka.streams.processor.internals.RecordBatchingStateRestoreCallback;
 import org.apache.kafka.streams.query.Position;
@@ -67,8 +71,11 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
@@ -76,6 +83,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 import static org.apache.kafka.streams.StreamsConfig.InternalConfig.IQ_CONSISTENCY_OFFSET_VECTOR_ENABLED;
 import static org.apache.kafka.streams.StreamsConfig.METRICS_RECORDING_LEVEL_CONFIG;
@@ -95,6 +106,9 @@ public class RocksDBStore
     private static final long BLOCK_SIZE = 4096L;
     private static final int MAX_WRITE_BUFFERS = 3;
     static final String DB_FILE_DIR = "rocksdb";
+    private static final byte[] CHANGELOG_KEY_PREFIX = new byte[] {0x0};
+    private static final byte[] POSITION_KEY_PREFIX = new byte[] {0x1};
+    protected static final byte[] OFFSETS_COLUMN_FAMILY = "offsets".getBytes(StandardCharsets.UTF_8);
 
     final String name;
     private final String parentDir;
@@ -106,6 +120,12 @@ public class RocksDBStore
     RocksDB db;
     DBAccessor directAccessor;
     ColumnFamilyAccessor cf;
+    ColumnFamilyHandle offsetsCf;
+    List<ColumnFamilyHandle> columnFamilyHandles;
+    final Serializer<Integer> changelogKeySerializer = new OffsetsKeySerializer(CHANGELOG_KEY_PREFIX);
+    final Serializer<Integer> positionKeySerializer = new OffsetsKeySerializer(POSITION_KEY_PREFIX);
+    final Serializer<Long> offsetsSerializer = Serdes.Long().serializer();
+    final Deserializer<Long> offsetsDeserializer = Serdes.Long().deserializer();
 
     // the following option objects will be created in openDB and closed in the close() method
     private RocksDBGenericOptionsToDbOptionsColumnFamilyOptionsAdapter userSpecifiedOptions;
@@ -149,6 +169,115 @@ public class RocksDBStore
         this.autoManagedIterators = autoManagedIterators;
     }
 
+    <T> T readOffsetData(final byte[] prefix,
+                         final Supplier<T> initializer,
+                         final Function<T, Function<String, Function<Integer, Consumer<Long>>>> addOffset) {
+        final T result = initializer.get();
+        try (final RocksIterator it = db.newIterator(offsetsCf, rOptions)) {
+            it.seek(prefix);
+            final byte[] testPrefix = new byte[prefix.length];
+            while (it.isValid()) {
+                final ByteBuffer key = ByteBuffer.wrap(it.key());
+                key.get(testPrefix);
+                if (!Arrays.equals(testPrefix, prefix)) break;
+                final int partition = key.getInt();
+//                final String topic = key.asCharBuffer().toString();
+                final String topic = StandardCharsets.UTF_8.decode(key).toString();
+                final long offset = offsetsDeserializer.deserialize(null, it.value());
+                addOffset.apply(result).apply(topic).apply(partition).accept(offset);
+                it.next();
+            }
+        }
+        return result;
+    }
+
+    Position readPositionData() {
+        return readOffsetData(
+                POSITION_KEY_PREFIX,
+                Position::emptyPosition,
+                position -> topic -> partition -> offset -> position.withComponent(topic, partition, offset)
+        );
+    }
+
+//    Map<TopicPartition, Long> readCheckpointData() {
+//        return readOffsetData(
+//                CHANGELOG_KEY_PREFIX,
+//                HashMap::new,
+//                map -> topic -> partition -> offset -> map.put(new TopicPartition(topic, partition), offset)
+//        );
+//    }
+
+    // todo: extract commonality between this and AbstractSegmentedRocksDBBytesStore Position initialization
+    //       extract all these utility methods to a "RocksDBUtils"? Should reduce class complexity a lot
+    Position initializePositionData() {
+        // read position data from database
+        final Position position = readPositionData();
+
+        // migrate old-style Position checkpoint file to database
+        final File positionCheckpointFile = new File(context.stateDir(), name() + ".position");
+        if (positionCheckpointFile.exists()) {
+            if (position.isEmpty()) {
+                // update Position from existing file
+                try {
+                    setPositionOffsets(new OffsetCheckpoint(positionCheckpointFile).read());
+                } catch (final IOException e) {
+                    throw new ProcessorStateException(
+                            "Failed to read offset checkpoints from .position file during migration for store " + name, e);
+                }
+            }
+            if (!positionCheckpointFile.delete()) {
+                throw new ProcessorStateException("Failed to delete migrated .position file for store " + name);
+            }
+        }
+        return position;
+    }
+
+    public void setPositionOffsets(final Map<TopicPartition, Long> offsets) {
+        try (final WriteBatch batch = new WriteBatch()) {
+            for (final Map.Entry<TopicPartition, Long> e : offsets.entrySet()) {
+                final TopicPartition key = e.getKey();
+                updatePosition(batch, key.topic(), key.partition(), e.getValue());
+            }
+            write(batch);
+            // we need to force a flush to guarantee durability of the migrated offsets, since we're about
+            // to delete the legacy file from the disk
+            db.flush(fOptions);
+        } catch (final RocksDBException e) {
+            throw new ProcessorStateException("Failed to migrate position offsets to db for store " + name, e);
+        }
+    }
+
+    protected void updatePosition() {
+        updatePosition(null);
+    }
+
+    protected void updatePosition(final WriteBatchInterface batch) {
+        if (position != null && context != null && context.recordMetadata().isPresent()) {
+            final RecordMetadata meta = context.recordMetadata().get();
+            if (meta.topic() != null) {
+                updatePosition(batch, meta.topic(), meta.partition(), meta.offset());
+            }
+        }
+    }
+
+    protected void updatePosition(final WriteBatchInterface batch,
+                                  final String topic,
+                                  final int partition,
+                                  final long offset) {
+        try {
+            final byte[] key = positionKeySerializer.serialize(topic, partition);
+            final byte[] value = offsetsSerializer.serialize(topic, offset);
+            if (batch == null) {
+                db.put(offsetsCf, key, value);
+            } else {
+                batch.put(offsetsCf, key, value);
+            }
+            position.withComponent(topic, partition, offset);
+        } catch (final RocksDBException e) {
+            throw new ProcessorStateException("Failed to update position metadata for store " + name, e);
+        }
+    }
+
     @Override
     public void init(final StateStoreContext context,
                      final StateStore root) {
@@ -157,16 +286,14 @@ public class RocksDBStore
         metricsRecorder.init(getMetricsImpl(context), context.taskId());
         openDB(context.appConfigs(), context.stateDir());
 
-        final File positionCheckpointFile = new File(context.stateDir(), name() + ".position");
-        final OffsetCheckpoint positionCheckpoint = new OffsetCheckpoint(positionCheckpointFile);
-        this.position = StoreQueryUtils.readPositionFromCheckpoint(positionCheckpoint);
+        this.position = initializePositionData();
 
         // value getter should always read directly from rocksDB
         // since it is only for values that are already flushed
         context.register(
             root,
             (RecordBatchingStateRestoreCallback) this::restoreBatch,
-            () -> StoreQueryUtils.checkpointPosition(positionCheckpoint, position)
+            () -> { }
         );
         consistencyEnabled = StreamsConfig.InternalConfig.getBoolean(
             context.appConfigs(),
@@ -224,6 +351,9 @@ public class RocksDBStore
             configSetter.setConfig(name, userSpecifiedOptions, configs);
         }
 
+        // always enable atomic flush, to guarantee atomicity of data and offsets
+        userSpecifiedOptions.setAtomicFlush(true);
+
         dbDir = new File(new File(stateDir, parentDir), name);
         try {
             Files.createDirectories(dbDir.getParentFile().toPath());
@@ -271,17 +401,70 @@ public class RocksDBStore
 
     void openRocksDB(final DBOptions dbOptions,
                      final ColumnFamilyOptions columnFamilyOptions) {
-        final List<ColumnFamilyDescriptor> columnFamilyDescriptors
-                = Collections.singletonList(new ColumnFamilyDescriptor(RocksDB.DEFAULT_COLUMN_FAMILY, columnFamilyOptions));
-        final List<ColumnFamilyHandle> columnFamilies = new ArrayList<>(columnFamilyDescriptors.size());
+        final List<ColumnFamilyHandle> columnFamilies = openRocksDB(
+                dbOptions,
+                new ColumnFamilyDescriptor(RocksDB.DEFAULT_COLUMN_FAMILY, columnFamilyOptions),
+                new ColumnFamilyDescriptor(OFFSETS_COLUMN_FAMILY, columnFamilyOptions)
+        );
+        directAccessor = new DirectDBAccessor(db);
+        cf = new SingleColumnFamilyAccessor(columnFamilies.get(0));
+        offsetsCf = columnFamilies.get(1);
+        columnFamilyHandles = columnFamilies;
+    }
+
+    List<ColumnFamilyHandle> openRocksDB(final DBOptions dbOptions,
+                                         final ColumnFamilyDescriptor defaultColumnFamilyDescriptor,
+                                         final ColumnFamilyDescriptor... columnFamilyDescriptors) {
+        final String absolutePath = dbDir.getAbsolutePath();
+        final List<ColumnFamilyDescriptor> extraDescriptors = Arrays.asList(columnFamilyDescriptors);
+        final List<ColumnFamilyDescriptor> allDescriptors = new ArrayList<>(1 + columnFamilyDescriptors.length);
+        allDescriptors.add(defaultColumnFamilyDescriptor);
+        allDescriptors.addAll(extraDescriptors);
+        final List<ColumnFamilyHandle> columnFamilies = new ArrayList<>(allDescriptors.size());
 
         try {
-            db = RocksDB.open(dbOptions, dbDir.getAbsolutePath(), columnFamilyDescriptors, columnFamilies);
-            directAccessor = new DirectDBAccessor(db);
-            cf = new SingleColumnFamilyAccessor(columnFamilies.get(0));
+            db = RocksDB.open(dbOptions, absolutePath, allDescriptors, columnFamilies);
+            return columnFamilies;
         } catch (final RocksDBException e) {
-            throw new ProcessorStateException("Error opening store " + name + " at location " + dbDir.toString(), e);
+            // automatically create missing column families
+            if (e.getMessage().startsWith("Column family not found: ")) {
+                log.info("{}; creating column family...", e.getMessage());
+                try {
+                    final Options options = new Options(dbOptions, defaultColumnFamilyDescriptor.getOptions());
+                    final List<byte[]> allExisting = RocksDB.listColumnFamilies(options, absolutePath);
+                    log.info("Existing column families: {}", allExisting.stream().map(b -> new String(b, StandardCharsets.UTF_8)).collect(Collectors.joining(", ")));
+
+                    final List<ColumnFamilyDescriptor> existingDescriptors = allDescriptors.stream().filter(descriptor ->
+                            allExisting.stream().anyMatch(existing -> Arrays.equals(existing, descriptor.getName()))
+                    ).collect(Collectors.toList());
+                    final List<ColumnFamilyDescriptor> toCreate = extraDescriptors.stream().filter(descriptor ->
+                        allExisting.stream().noneMatch(existing -> Arrays.equals(existing, descriptor.getName()))
+                    ).collect(Collectors.toList());
+                    log.info("Creating column families: {}", toCreate.stream().map(c -> new String(c.getName(), StandardCharsets.UTF_8)).collect(Collectors.joining(", ")));
+                    try (final RocksDB tmp = RocksDB.open(dbOptions, absolutePath, existingDescriptors, new ArrayList<>(existingDescriptors.size()))) {
+                        tmp.createColumnFamilies(toCreate);
+                    }
+                } catch (final RocksDBException ex) {
+                    throw new ProcessorStateException("Failed to create missing column families in store " + name, ex);
+                }
+
+                try {
+                    db = RocksDB.open(dbOptions, absolutePath, allDescriptors, columnFamilies);
+                    return columnFamilies;
+                } catch (final RocksDBException ex) {
+                    throw new ProcessorStateException("Error opening store (after creating missing column families) " + name + " at location " + dbDir.toString(), ex);
+                }
+            } else {
+                throw new ProcessorStateException("Error opening store " + name + " at location " + dbDir.toString(), e);
+            }
         }
+    }
+
+    ColumnFamilyHandle columnFamilyHandle(final int columnFamilyId) {
+        return columnFamilyHandles.stream()
+                .filter(columnFamily -> columnFamily.getID() == columnFamilyId)
+                .findFirst()
+                .orElseThrow(() -> new ProcessorStateException("Unknown column family with ID " + columnFamilyId + " in store " + name));
     }
 
     @Override
@@ -312,7 +495,7 @@ public class RocksDBStore
         validateStoreOpen();
         cf.put(directAccessor, key.get(), value);
 
-        StoreQueryUtils.updatePosition(position, context);
+        updatePosition();
     }
 
     @Override
@@ -330,8 +513,8 @@ public class RocksDBStore
     public void putAll(final List<KeyValue<Bytes, byte[]>> entries) {
         try (final WriteBatch batch = new WriteBatch()) {
             cf.prepareBatch(entries, batch);
+            updatePosition(batch);
             write(batch);
-            StoreQueryUtils.updatePosition(position, context);
         } catch (final RocksDBException e) {
             throw new ProcessorStateException("Error while batch writing to store " + name, e);
         }
@@ -553,10 +736,59 @@ public class RocksDBStore
     }
 
     @Override
-    public synchronized void flush() {
+    public void addOffsetsToBatch(final Map<TopicPartition, Long> changelogOffsets,
+                                  final WriteBatchInterface batch) throws RocksDBException {
+        // add changelog offsets
+        for (final Map.Entry<TopicPartition, Long> entry : changelogOffsets.entrySet()) {
+            final TopicPartition topicPartition = entry.getKey();
+            final Long offset = entry.getValue();
+            Objects.requireNonNull(topicPartition, "TopicPartition key may not be null for offset metadata");
+            Objects.requireNonNull(offset, "offset for TopicPartition " + topicPartition + " may not be null for offset metadata");
+            batch.put(
+                    offsetsCf,
+                    changelogKeySerializer.serialize(topicPartition.topic(), topicPartition.partition()),
+                    offsetsSerializer.serialize(topicPartition.topic(), offset)
+            );
+        }
+    }
+
+    @Override
+    public boolean managesCheckpoints() {
+        return true;
+    }
+
+    @Override
+    public Long getCommittedOffset(final TopicPartition topicPartition) {
+        try {
+            // first, look for changelog, then position offsets
+            byte[] offset = directAccessor.get(
+                    offsetsCf, changelogKeySerializer.serialize(topicPartition.topic(), topicPartition.partition()));
+
+            // todo: should we query for position offsets too or should this method exclusively fetch changelog offsets??
+            if (offset == null) {
+                offset = directAccessor.get(
+                        offsetsCf, positionKeySerializer.serialize(topicPartition.topic(), topicPartition.partition()));
+            }
+
+            return offsetsDeserializer.deserialize(null, offset);
+        } catch (final RocksDBException e) {
+            throw new ProcessorStateException(
+                    "Error fetching committed offsets for partition " + topicPartition + " from store " + name, e);
+        }
+    }
+
+    @Override
+    public synchronized void commit(final Map<TopicPartition, Long> changelogOffsets) {
         if (db == null) {
             return;
         }
+        try (final WriteBatch batch = new WriteBatch()) {
+            addOffsetsToBatch(changelogOffsets, batch);
+            db.write(wOptions, batch);
+        } catch (final RocksDBException e) {
+            throw new ProcessorStateException("Error while committing offset metadata to store " + name, e);
+        }
+
         try {
             cf.flush();
         } catch (final RocksDBException e) {

@@ -23,10 +23,13 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.BytesSerializer;
 import org.apache.kafka.common.utils.Bytes;
 import org.apache.kafka.streams.KeyValue;
@@ -51,19 +54,25 @@ class LogicalKeyValueSegment implements Comparable<LogicalKeyValueSegment>, Segm
 
     private final long id;
     private final String name;
-    private final RocksDBStore physicalStore;
+    private final TransactionalRocksDBStore physicalStore;
     private final PrefixKeyFormatter prefixKeyFormatter;
 
     final Set<KeyValueIterator<Bytes, byte[]>> openIterators = Collections.synchronizedSet(new HashSet<>());
 
     LogicalKeyValueSegment(final long id,
                            final String name,
-                           final RocksDBStore physicalStore) {
+                           final TransactionalRocksDBStore physicalStore) {
         this.id = id;
         this.name = name;
         this.physicalStore = Objects.requireNonNull(physicalStore);
 
         this.prefixKeyFormatter = new PrefixKeyFormatter(serializeLongToBytes(id));
+    }
+
+    @Override
+    public void addOffsetsToBatch(final Map<TopicPartition, Long> changelogOffsets,
+                                  final WriteBatchInterface batch) throws RocksDBException {
+        physicalStore.addOffsetsToBatch(changelogOffsets, batch);
     }
 
     @Override
@@ -138,8 +147,8 @@ class LogicalKeyValueSegment implements Comparable<LogicalKeyValueSegment>, Segm
     }
 
     @Override
-    public void flush() {
-        throw new UnsupportedOperationException("nothing to flush for logical segment");
+    public void commit(final Map<TopicPartition, Long> changelogOffsets) {
+        throw new UnsupportedOperationException("nothing to commit for logical segment");
     }
 
     @Override

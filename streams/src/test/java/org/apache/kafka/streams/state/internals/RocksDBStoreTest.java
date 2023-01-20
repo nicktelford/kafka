@@ -17,6 +17,7 @@
 package org.apache.kafka.streams.state.internals;
 
 import java.lang.reflect.Field;
+import java.util.Collections;
 import java.util.Optional;
 
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -360,7 +361,7 @@ public class RocksDBStoreTest extends AbstractKeyValueStoreTest {
     public void shouldNotThrowExceptionOnRestoreWhenThereIsPreExistingRocksDbFiles() {
         rocksDBStore.init((StateStoreContext) context, rocksDBStore);
         rocksDBStore.put(new Bytes("existingKey".getBytes(UTF_8)), "existingValue".getBytes(UTF_8));
-        rocksDBStore.flush();
+        rocksDBStore.commit(Collections.emptyMap());
 
         final List<KeyValue<byte[], byte[]>> restoreBytes = new ArrayList<>();
 
@@ -423,7 +424,7 @@ public class RocksDBStoreTest extends AbstractKeyValueStoreTest {
 
         rocksDBStore.init((StateStoreContext) context, rocksDBStore);
         rocksDBStore.putAll(entries);
-        rocksDBStore.flush();
+        rocksDBStore.commit(Collections.emptyMap());
 
         assertEquals(
             "a",
@@ -482,7 +483,7 @@ public class RocksDBStoreTest extends AbstractKeyValueStoreTest {
 
         rocksDBStore.init((StateStoreContext) context, rocksDBStore);
         rocksDBStore.putAll(entries);
-        rocksDBStore.flush();
+        rocksDBStore.commit(Collections.emptyMap());
 
         try (final KeyValueIterator<Bytes, byte[]> keysWithPrefix = rocksDBStore.prefixScan("prefix", stringSerializer)) {
             final List<String> valuesWithPrefix = new ArrayList<>();
@@ -517,7 +518,7 @@ public class RocksDBStoreTest extends AbstractKeyValueStoreTest {
 
         rocksDBStore.init((StateStoreContext) context, rocksDBStore);
         rocksDBStore.putAll(entries);
-        rocksDBStore.flush();
+        rocksDBStore.commit(Collections.emptyMap());
 
         try (final KeyValueIterator<Bytes, byte[]> keysWithPrefixAsabcd = rocksDBStore.prefixScan("abcd", stringSerializer)) {
             int numberOfKeysReturned = 0;
@@ -612,7 +613,7 @@ public class RocksDBStoreTest extends AbstractKeyValueStoreTest {
 
         rocksDBStore.init((StateStoreContext) context, rocksDBStore);
         rocksDBStore.putAll(entries);
-        rocksDBStore.flush();
+        rocksDBStore.commit(Collections.emptyMap());
 
         try (final KeyValueIterator<Bytes, byte[]> keysWithPrefix = rocksDBStore.prefixScan(prefix, stringSerializer)) {
             final List<String> valuesWithPrefix = new ArrayList<>();
@@ -647,7 +648,7 @@ public class RocksDBStoreTest extends AbstractKeyValueStoreTest {
             stringSerializer.serialize(null, "e")));
         rocksDBStore.init((StateStoreContext) context, rocksDBStore);
         rocksDBStore.putAll(entries);
-        rocksDBStore.flush();
+        rocksDBStore.commit(Collections.emptyMap());
 
         try (final KeyValueIterator<Bytes, byte[]> keysWithPrefix = rocksDBStore.prefixScan("d", stringSerializer)) {
             int numberOfKeysReturned = 0;
@@ -861,7 +862,7 @@ public class RocksDBStoreTest extends AbstractKeyValueStoreTest {
         rocksDBStore.put(
             new Bytes(stringSerializer.serialize(null, "anyKey")),
             stringSerializer.serialize(null, "anyValue"));
-        assertThrows(ProcessorStateException.class, () -> rocksDBStore.flush());
+        assertThrows(ProcessorStateException.class, () -> rocksDBStore.commit(Collections.emptyMap()));
     }
 
     @Test
@@ -887,7 +888,7 @@ public class RocksDBStoreTest extends AbstractKeyValueStoreTest {
             rocksDBStore.put(new Bytes(keyValue.key), keyValue.value);
         }
 
-        rocksDBStore.flush();
+        rocksDBStore.commit(Collections.emptyMap());
 
         int expectedIndex = 0;
         for (final KeyValue<byte[], byte[]> keyValue : keyValues) {
@@ -933,7 +934,7 @@ public class RocksDBStoreTest extends AbstractKeyValueStoreTest {
         final byte[] key = "hello".getBytes();
         final byte[] value = "world".getBytes();
         rocksDBStore.put(Bytes.wrap(key), value);
-        rocksDBStore.flush();
+        rocksDBStore.commit(Collections.emptyMap());
 
         streamsMetrics.rocksDBMetricsRecordingTrigger().run();
 
@@ -967,7 +968,7 @@ public class RocksDBStoreTest extends AbstractKeyValueStoreTest {
         final byte[] key = "hello".getBytes();
         final byte[] value = "world".getBytes();
         rocksDBStore.put(Bytes.wrap(key), value);
-        rocksDBStore.flush();
+        rocksDBStore.commit(Collections.emptyMap());
 
         assertThat(rocksDBStore.approximateNumEntries(), greaterThan(0L));
     }

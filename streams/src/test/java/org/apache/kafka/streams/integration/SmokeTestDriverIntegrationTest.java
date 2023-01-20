@@ -19,6 +19,7 @@ package org.apache.kafka.streams.integration;
 import java.util.stream.Stream;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.utils.Exit;
+import org.apache.kafka.streams.KafkaStreams;
 import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.StreamsConfig.InternalConfig;
 import org.apache.kafka.streams.integration.utils.EmbeddedKafkaCluster;
@@ -42,6 +43,7 @@ import java.util.Set;
 import static org.apache.kafka.streams.tests.SmokeTestDriver.generate;
 import static org.apache.kafka.streams.tests.SmokeTestDriver.verify;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 @Timeout(600)
 @Tag("integration")
@@ -132,6 +134,7 @@ public class SmokeTestDriverIntegrationTest {
         props.put(ConsumerConfig.SESSION_TIMEOUT_MS_CONFIG, 10000);
 
         // cycle out Streams instances as long as the test is running.
+        boolean clientError = false;
         while (driver.isAlive()) {
             // take a nap
             Thread.sleep(1000);
@@ -148,6 +151,10 @@ public class SmokeTestDriverIntegrationTest {
                 client.closeAsync();
                 while (!client.closed()) {
                     Thread.sleep(100);
+                }
+
+                if (client.state() == KafkaStreams.State.ERROR) {
+                    clientError = true;
                 }
             }
         }
@@ -167,6 +174,11 @@ public class SmokeTestDriverIntegrationTest {
                     Thread.sleep(100);
                 }
             }
+        }
+
+        // ensure clients all ran and closed normally
+        if (clientError) {
+            fail("At leat one Streams instance failed with an ERROR");
         }
 
         // check to make sure that it actually succeeded

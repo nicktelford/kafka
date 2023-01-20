@@ -16,12 +16,19 @@
  */
 package org.apache.kafka.streams.state.internals;
 
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.streams.KeyValue;
 import org.rocksdb.RocksDBException;
 import org.rocksdb.WriteBatchInterface;
 
+import java.util.Map;
+
 public interface BatchWritingStore {
     void addToBatch(final KeyValue<byte[], byte[]> record,
                     final WriteBatchInterface batch) throws RocksDBException;
+
+    void addOffsetsToBatch(final Map<TopicPartition, Long> changelogOffsets,
+                           final WriteBatchInterface batch) throws RocksDBException;
+
     void write(final WriteBatchInterface batch) throws RocksDBException;
 }

@@ -30,7 +30,6 @@ import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.streams.errors.DeserializationExceptionHandler;
 import org.apache.kafka.streams.errors.LockException;
 import org.apache.kafka.streams.errors.StreamsException;
-import org.apache.kafka.streams.errors.TaskCorruptedException;
 import org.apache.kafka.streams.errors.TaskMigratedException;
 import org.apache.kafka.streams.errors.TopologyException;
 import org.apache.kafka.streams.processor.Cancellable;
@@ -229,7 +228,6 @@ public class StreamTask extends AbstractTask implements ProcessorNodePunctuator,
     }
 
     /**
-     * @throws TaskCorruptedException if the state cannot be reused (with EOS) and needs to be reset
      * @throws LockException    could happen when multi-threads within the single instance, could retry
      * @throws TimeoutException if initializing record collector timed out
      * @throws StreamsException fatal error, should close the thread
@@ -634,6 +632,9 @@ public class StreamTask extends AbstractTask implements ProcessorNodePunctuator,
                     clean,
                     () -> StateManagerUtil.closeStateManager(
                         log,
+                        logPrefix,
+                        clean,
+                        eosEnabled,
                         stateMgr,
                         stateDirectory,
                         TaskType.ACTIVE
@@ -740,12 +741,7 @@ public class StreamTask extends AbstractTask implements ProcessorNodePunctuator,
 
             record = null;
         } catch (final TimeoutException timeoutException) {
-            if (!eosEnabled) {
-                throw timeoutException;
-            } else {
-                record = null;
-                throw new TaskCorruptedException(Collections.singleton(id));
-            }
+            throw timeoutException;
         } catch (final StreamsException exception) {
             record = null;
             throw exception;

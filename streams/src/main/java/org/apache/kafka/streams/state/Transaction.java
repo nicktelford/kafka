@@ -17,9 +17,12 @@
 package org.apache.kafka.streams.state;
 
 import org.apache.kafka.common.IsolationLevel;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.streams.processor.ProcessorContext;
 import org.apache.kafka.streams.processor.StateStore;
 import org.apache.kafka.streams.processor.StateStoreContext;
+
+import java.util.Map;
 
 /**
  * Represents a read/write transaction on a state store.
@@ -137,7 +140,7 @@ public interface Transaction extends StateStore, AutoCloseable {
     boolean isOpen();
 
     /**
-     * Commit and close this Transaction.
+     * Commit this Transaction.
      * <p>
      * Any records help by this Transaction should be written to the underlying state store.
      * <p>
@@ -146,7 +149,7 @@ public interface Transaction extends StateStore, AutoCloseable {
      * @see #close() to close the Transaction without writing data to the underlying state store.
      */
     @Override
-    void flush();
+    void commit(final Map<TopicPartition, Long> changelogOffsets);
 
     /**
      * Closes this Transaction, without committing records.

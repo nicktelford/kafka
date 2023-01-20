@@ -17,6 +17,7 @@
 package org.apache.kafka.streams.state.internals;
 
 import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.metrics.Sensor;
 import org.apache.kafka.common.utils.Bytes;
 import org.apache.kafka.streams.KeyValue;
@@ -39,6 +40,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -61,7 +63,6 @@ public class AbstractRocksDBSegmentedBytesStore<S extends Segment> implements Se
     private long observedStreamTime = ConsumerRecord.NO_TIMESTAMP;
     private boolean consistencyEnabled = false;
     private Position position;
-    protected OffsetCheckpoint positionCheckpoint;
     private volatile boolean open;
 
     AbstractRocksDBSegmentedBytesStore(final String name,
@@ -74,6 +75,23 @@ public class AbstractRocksDBSegmentedBytesStore<S extends Segment> implements Se
         this.retentionPeriod = retentionPeriod;
         this.keySchema = keySchema;
         this.segments = segments;
+    }
+
+    @Override
+    public boolean managesCheckpoints() {
+        return true;
+    }
+
+    @Override
+    public Long getCommittedOffset(final TopicPartition topicPartition) {
+        Long offset = null;
+        for (final Segment segment : getSegments()) {
+            final Long segmentOffset = segment.getCommittedOffset(topicPartition);
+            if (segmentOffset != null) {
+                offset = Math.max(offset == null ? -1L : offset, segmentOffset);
+            }
+        }
+        return offset;
     }
 
     @Override
@@ -309,15 +327,37 @@ public class AbstractRocksDBSegmentedBytesStore<S extends Segment> implements Se
 
         segments.openExisting(this.context, observedStreamTime);
 
+        // Position is the combined Position of every segment
+        this.position = Position.emptyPosition();
+        for (final Segment segment : getSegments()) {
+            this.position.merge(segment.getPosition());
+        }
+
+        // migrate Position file
         final File positionCheckpointFile = new File(context.stateDir(), name() + ".position");
-        this.positionCheckpoint = new OffsetCheckpoint(positionCheckpointFile);
-        this.position = StoreQueryUtils.readPositionFromCheckpoint(positionCheckpoint);
+        if (positionCheckpointFile.exists()) {
+            if (position.isEmpty()) {
+                // update Position from existing file
+                try {
+                    final Map<TopicPartition, Long> toMigrate = new OffsetCheckpoint(positionCheckpointFile).read();
+                    for (final Segment segment : getSegments()) {
+                        segment.commit(toMigrate);
+                    }
+                } catch (final IOException e) {
+                    throw new ProcessorStateException(
+                            "Failed to read offset checkpoints from .position file during migration for store " + name, e);
+                }
+            }
+            if (!positionCheckpointFile.delete()) {
+                throw new ProcessorStateException("Failed to delete migrated .position file for store " + name);
+            }
+        }
 
         // register and possibly restore the state from the logs
         stateStoreContext.register(
             root,
             (RecordBatchingStateRestoreCallback) this::restoreAllInternal,
-            () -> StoreQueryUtils.checkpointPosition(positionCheckpoint, position)
+            () -> { }
         );
 
         open = true;
@@ -335,8 +375,8 @@ public class AbstractRocksDBSegmentedBytesStore<S extends Segment> implements Se
     }
 
     @Override
-    public void flush() {
-        segments.flush();
+    public void commit(final Map<TopicPartition, Long> changelogOffsets) {
+        segments.commit(changelogOffsets);
     }
 
     @Override

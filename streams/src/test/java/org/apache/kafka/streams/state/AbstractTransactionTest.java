@@ -17,6 +17,7 @@
 package org.apache.kafka.streams.state;
 
 import org.apache.kafka.common.IsolationLevel;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.processor.StateStoreContext;
 import org.apache.kafka.test.InternalMockProcessorContext;
@@ -26,6 +27,8 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
+import java.util.Collections;
+import java.util.Map;
 import java.util.Properties;
 
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -100,21 +103,21 @@ public abstract class AbstractTransactionTest {
 
     @Test
     public void flushIsIdempotent() {
-        transaction.flush();
-        transaction.flush();
+        transaction.commit(Collections.emptyMap());
+        transaction.commit(Collections.emptyMap());
     }
 
     @Test
     public void shouldBeClosedAfterFlush() {
         assertThat(transaction.isOpen(), is(true));
-        transaction.flush();
+        transaction.commit(Collections.emptyMap());
         assertThat(transaction.isOpen(), is(false));
     }
 
     @Test
     public void shouldStopTrackingFlushedTransactions() {
         assertThat(store.openTransactions(), is(1));
-        transaction.flush();
+        transaction.commit(Collections.emptyMap());
         assertThat(store.openTransactions(), is(0));
     }
 
@@ -126,7 +129,7 @@ public abstract class AbstractTransactionTest {
         store.register(transaction);
 
         assertThat(store.openTransactions(), is(2));
-        assertThrows(RuntimeException.class, transaction::flush);
+        assertThrows(RuntimeException.class, () -> transaction.commit(Collections.emptyMap()));
         assertThat(store.openTransactions(), is(1));
     }
 
@@ -172,7 +175,7 @@ public abstract class AbstractTransactionTest {
     private static class MockBrokenTransaction extends AbstractTransaction<AbstractTransactionalStore> {
 
         @Override
-        public void commitTransaction() {
+        public void commitTransaction(final Map<TopicPartition, Long> offsets) {
             throw new RuntimeException("commit failed!");
         }
 

@@ -119,7 +119,7 @@ public class GlobalStateManagerImplTest {
         storeToTopic.put(storeName3, t3.topic());
         storeToTopic.put(storeName4, t4.topic());
 
-        store1 = new NoOpReadOnlyStore<>(storeName1, true);
+        store1 = new NoOpReadOnlyStore<>(storeName1, true, true);
         store2 = new ConverterStore<>(storeName2, true);
         store3 = new NoOpReadOnlyStore<>(storeName3);
         store4 = new NoOpReadOnlyStore<>(storeName4);
@@ -161,7 +161,9 @@ public class GlobalStateManagerImplTest {
     @Test
     public void shouldLogWarningMessageWhenIOExceptionInCheckPoint() throws IOException {
         final Map<TopicPartition, Long> offsets = Collections.singletonMap(t1, 25L);
+        initializeConsumer(25, 0L, t1);
         stateManager.initialize();
+        stateManager.registerStore(store1, (k, v) -> { }, () -> { });
         stateManager.updateChangelogOffsets(offsets);
 
         // set readonly to the CHECKPOINT_FILE_NAME.tmp file because we will write data to the .tmp file first
@@ -171,7 +173,7 @@ public class GlobalStateManagerImplTest {
         file.setWritable(false);
 
         try (final LogCaptureAppender appender = LogCaptureAppender.createAndRegister(GlobalStateManagerImpl.class)) {
-            stateManager.checkpoint();
+            stateManager.commit();
             assertThat(appender.getMessages(), hasItem(containsString(
                 "Failed to write offset checkpoint file to " + checkpointFile.getPath() + " for global stores")));
         }
@@ -368,7 +370,7 @@ public class GlobalStateManagerImplTest {
         initializeConsumer(1, 0, t2);
         stateManager.registerStore(store2, stateRestoreCallback, null);
 
-        stateManager.flush();
+        stateManager.commit();
         assertTrue(store1.flushed);
         assertTrue(store2.flushed);
     }
@@ -380,11 +382,11 @@ public class GlobalStateManagerImplTest {
         initializeConsumer(1, 0, t1);
         stateManager.registerStore(new NoOpReadOnlyStore<Object, Object>(store1.name()) {
             @Override
-            public void flush() {
+            public void commit(final Map<TopicPartition, Long> offsets) {
                 throw new RuntimeException("KABOOM!");
             }
         }, stateRestoreCallback, null);
-        assertThrows(StreamsException.class, stateManager::flush);
+        assertThrows(StreamsException.class, stateManager::commit);
     }
 
     @Test
@@ -470,12 +472,15 @@ public class GlobalStateManagerImplTest {
     }
 
     @Test
-    public void shouldCheckpointOffsets() throws IOException {
+    public void shouldCheckpointOffsetsForUnmanagedStores() throws IOException {
         final Map<TopicPartition, Long> offsets = Collections.singletonMap(t1, 25L);
+        initializeConsumer(25, 0L, t1);
         stateManager.initialize();
 
+        stateManager.registerStore(store1, (k, v) -> { }, () -> { });
+
         stateManager.updateChangelogOffsets(offsets);
-        stateManager.checkpoint();
+        stateManager.commit();
 
         final Map<TopicPartition, Long> result = readOffsetsCheckpoint();
         assertThat(result, equalTo(offsets));
@@ -492,7 +497,7 @@ public class GlobalStateManagerImplTest {
 
         final Map<TopicPartition, Long> initialCheckpoint = stateManager.changelogOffsets();
         stateManager.updateChangelogOffsets(Collections.singletonMap(t1, 101L));
-        stateManager.checkpoint();
+        stateManager.commit();
 
         final Map<TopicPartition, Long> updatedCheckpoint = stateManager.changelogOffsets();
         assertThat(updatedCheckpoint.get(t2), equalTo(initialCheckpoint.get(t2)));
@@ -525,7 +530,7 @@ public class GlobalStateManagerImplTest {
         stateManager.initialize();
         initializeConsumer(10, 0, t1);
         stateManager.registerStore(store1, stateRestoreCallback, null);
-        stateManager.checkpoint();
+        stateManager.commit();
         stateManager.close();
 
         final Map<TopicPartition, Long> checkpointMap = stateManager.changelogOffsets();

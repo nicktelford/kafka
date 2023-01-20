@@ -53,7 +53,7 @@ public class LogicalKeyValueSegmentTest {
     private static final Serializer<String> STRING_SERIALIZER = new StringSerializer();
     private static final Deserializer<String> STRING_DESERIALIZER = new StringDeserializer();
 
-    private RocksDBStore physicalStore;
+    private TransactionalRocksDBStore physicalStore;
 
     private LogicalKeyValueSegment segment0;
     private LogicalKeyValueSegment segment1;
@@ -62,7 +62,8 @@ public class LogicalKeyValueSegmentTest {
 
     @Before
     public void setUp() {
-        physicalStore = new RocksDBStore(STORE_NAME, DB_FILE_DIR, new RocksDBMetricsRecorder(METRICS_SCOPE, STORE_NAME), false);
+        physicalStore = new TransactionalRocksDBStore(
+                new RocksDBStore(STORE_NAME, DB_FILE_DIR, new RocksDBMetricsRecorder(METRICS_SCOPE, STORE_NAME), false));
         physicalStore.init((StateStoreContext) new InternalMockProcessorContext<>(
             TestUtils.tempDirectory(),
             Serdes.String(),

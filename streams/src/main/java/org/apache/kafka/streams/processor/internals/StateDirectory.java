@@ -304,7 +304,7 @@ public class StateDirectory {
                 } else {
                     // If it's not a lock file then the directory is not empty,
                     // but finish up the loop in case there's a lock file left to delete
-                    log.trace("TaskDir {} was not empty, found {}", taskDir, file);
+                    log.info("TaskDir {} was not empty, found {}", taskDir, file);
                     taskDirEmpty = false;
                 }
             }

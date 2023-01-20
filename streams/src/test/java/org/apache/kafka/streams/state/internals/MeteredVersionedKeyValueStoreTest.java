@@ -31,10 +31,12 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import org.apache.kafka.common.MetricName;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.metrics.KafkaMetric;
 import org.apache.kafka.common.metrics.Metrics;
 import org.apache.kafka.common.metrics.Sensor;
@@ -233,9 +235,9 @@ public class MeteredVersionedKeyValueStoreTest {
 
     @Test
     public void shouldDelegateAndRecordMetricsOnFlush() {
-        store.flush();
+        store.commit(Collections.singletonMap(new TopicPartition("test", 2), 50L));
 
-        verify(inner).flush();
+        verify(inner).commit(Collections.singletonMap(new TopicPartition("test", 2), 50L));
         assertThat((Double) getMetric("flush-rate").metricValue(), greaterThan(0.0));
     }
 

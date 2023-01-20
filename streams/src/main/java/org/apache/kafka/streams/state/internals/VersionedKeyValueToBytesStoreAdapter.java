@@ -17,7 +17,9 @@
 package org.apache.kafka.streams.state.internals;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.Serde;
 import org.apache.kafka.common.serialization.Serdes.ByteArraySerde;
 import org.apache.kafka.common.serialization.Serializer;
@@ -99,8 +101,8 @@ public class VersionedKeyValueToBytesStoreAdapter implements VersionedBytesStore
     }
 
     @Override
-    public void flush() {
-        inner.flush();
+    public void commit(final Map<TopicPartition, Long> changelogOffsets) {
+        inner.commit(changelogOffsets);
     }
 
     @Override

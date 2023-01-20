@@ -16,6 +16,7 @@
  */
 package org.apache.kafka.test;
 
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.Serializer;
 import org.apache.kafka.streams.processor.ProcessorContext;
 import org.apache.kafka.streams.processor.StateStore;
@@ -24,11 +25,13 @@ import org.apache.kafka.streams.state.KeyValueIterator;
 import org.apache.kafka.streams.state.ReadOnlyKeyValueStore;
 
 import java.io.File;
+import java.util.Map;
 
 public class NoOpReadOnlyStore<K, V> implements ReadOnlyKeyValueStore<K, V>, StateStore {
     private final String name;
     private final boolean rocksdbStore;
     private boolean open = true;
+    private boolean unmanaged = false;
     public boolean initialized;
     public boolean flushed;
 
@@ -44,6 +47,11 @@ public class NoOpReadOnlyStore<K, V> implements ReadOnlyKeyValueStore<K, V>, Sta
                              final boolean rocksdbStore) {
         this.name = name;
         this.rocksdbStore = rocksdbStore;
+    }
+
+    public NoOpReadOnlyStore(final String name, final boolean rocksdbStore, final boolean unmanaged) {
+        this(name, rocksdbStore);
+        this.unmanaged = unmanaged;
     }
 
     @Override
@@ -90,7 +98,7 @@ public class NoOpReadOnlyStore<K, V> implements ReadOnlyKeyValueStore<K, V>, Sta
     }
 
     @Override
-    public void flush() {
+    public void commit(final Map<TopicPartition, Long> offsets) {
         flushed = true;
     }
 
@@ -102,6 +110,11 @@ public class NoOpReadOnlyStore<K, V> implements ReadOnlyKeyValueStore<K, V>, Sta
     @Override
     public boolean persistent() {
         return rocksdbStore;
+    }
+
+    @Override
+    public boolean managesCheckpoints() {
+        return !unmanaged;
     }
 
     @Override

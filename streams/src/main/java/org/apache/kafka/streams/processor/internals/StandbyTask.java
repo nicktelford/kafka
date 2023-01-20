@@ -191,7 +191,7 @@ public class StandbyTask extends AbstractTask implements Task {
             case RUNNING:
             case SUSPENDED:
                 // do not need to flush state store caches in pre-commit since nothing would be sent for standby tasks
-                log.debug("Prepared {} task for committing", state());
+                log.info("Prepared {} task for committing", state());
 
                 break;
 
@@ -216,7 +216,7 @@ public class StandbyTask extends AbstractTask implements Task {
             case SUSPENDED:
                 maybeCheckpoint(enforceCheckpoint);
 
-                log.debug("Finalized commit for {} task", state());
+                log.info("Finalized commit for {} task", state());
 
                 break;
 
@@ -261,6 +261,9 @@ public class StandbyTask extends AbstractTask implements Task {
                     clean,
                     () -> StateManagerUtil.closeStateManager(
                         log,
+                        logPrefix,
+                        clean,
+                        eosEnabled,
                         stateMgr,
                         stateDirectory,
                         TaskType.STANDBY
@@ -292,7 +295,8 @@ public class StandbyTask extends AbstractTask implements Task {
     public boolean commitNeeded() {
         // for standby tasks committing is the same as checkpointing,
         // so we only need to commit if we want to checkpoint
-        return StateManagerUtil.checkpointNeeded(false, offsetSnapshotSinceLastFlush, stateMgr.changelogOffsets());
+        return !offsetSnapshotSinceLastFlush.equals(stateMgr.changelogOffsets());
+//        return StateManagerUtil.checkpointNeeded(false, offsetSnapshotSinceLastFlush, stateMgr.changelogOffsets());
     }
 
     @Override

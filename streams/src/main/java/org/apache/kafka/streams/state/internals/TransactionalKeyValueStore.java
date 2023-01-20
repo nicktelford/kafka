@@ -16,6 +16,7 @@
  */
 package org.apache.kafka.streams.state.internals;
 
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.Serializer;
 import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.processor.StateStore;
@@ -25,12 +26,13 @@ import org.apache.kafka.streams.state.KeyValueStore;
 
 import java.util.List;
 import java.util.function.Supplier;
+import java.util.Map;
 
 public class TransactionalKeyValueStore<S extends KeyValueStore<K, V>, K, V>
         extends WrappedStateStore<S, K, V> implements KeyValueStore<K, V> {
     KeyValueStore<K, V> currentTransaction;
 
-    private Supplier<Thread> currentThread;
+    private final Supplier<Thread> currentThread;
 
     protected KeyValueStore<K, V> currentTransaction() {
         if (currentThread.get() instanceof StreamThread) {
@@ -64,13 +66,9 @@ public class TransactionalKeyValueStore<S extends KeyValueStore<K, V>, K, V>
     }
 
     @Override @SuppressWarnings("unchecked")
-    public void flush() {
-        if (currentTransaction != null) {
-            currentTransaction.flush();
-            currentTransaction = (KeyValueStore<K, V>) currentTransaction.newTransaction();
-        } else {
-            currentTransaction();
-        }
+    public void commit(final Map<TopicPartition, Long> changelogOffsets) {
+        currentTransaction().commit(changelogOffsets);
+        currentTransaction = null;
     }
 
     @Override

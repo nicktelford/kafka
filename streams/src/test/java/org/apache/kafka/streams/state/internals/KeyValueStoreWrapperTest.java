@@ -25,6 +25,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.streams.errors.InvalidStateStoreException;
 import org.apache.kafka.streams.processor.StateStoreContext;
 import org.apache.kafka.streams.processor.api.ProcessorContext;
@@ -42,6 +43,8 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
+
+import java.util.Collections;
 
 @RunWith(MockitoJUnitRunner.StrictStubs.class)
 public class KeyValueStoreWrapperTest {
@@ -231,18 +234,18 @@ public class KeyValueStoreWrapperTest {
     public void shouldFlushTimestampedStore() {
         givenWrapperWithTimestampedStore();
 
-        wrapper.flush();
+        wrapper.commit(Collections.singletonMap(new TopicPartition("test", 2), 50L));
 
-        verify(timestampedStore).flush();
+        verify(timestampedStore).commit(Collections.singletonMap(new TopicPartition("test", 2), 50L));
     }
 
     @Test
     public void shouldFlushVersionedStore() {
         givenWrapperWithVersionedStore();
 
-        wrapper.flush();
+        wrapper.commit(Collections.singletonMap(new TopicPartition("test", 2), 50L));
 
-        verify(versionedStore).flush();
+        verify(versionedStore).commit(Collections.singletonMap(new TopicPartition("test", 2), 50L));
     }
 
     @Test

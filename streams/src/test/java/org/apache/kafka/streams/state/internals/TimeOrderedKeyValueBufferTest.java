@@ -46,6 +46,7 @@ import org.junit.runners.Parameterized;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Optional;
@@ -304,7 +305,7 @@ public class TimeOrderedKeyValueBufferTest<B extends TimeOrderedKeyValueBuffer<S
         buffer.evictWhile(() -> buffer.minTimestamp() < 1, kv -> { });
 
         // flush everything to the changelog
-        buffer.flush();
+        buffer.commit(Collections.emptyMap());
 
         // the buffer should serialize the buffer time and the value as byte[],
         // which we can't compare for equality using ProducerRecord.

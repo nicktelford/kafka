@@ -202,6 +202,32 @@ public class GlobalStateManagerImpl implements GlobalStateManager {
             )
         );
 
+        // load and, if necessary, migrate changelog offsets
+        if (store.managesCheckpoints()) {
+            final Map<TopicPartition, Long> managedOffsets = new HashMap<>(topicPartitions.size());
+            boolean migrateOffsets = false;
+
+            for (final TopicPartition changelogPartition : topicPartitions) {
+                final Long offset = store.getCommittedOffset(changelogPartition);
+                if (offset == null) {
+                    // migrate offset
+                    final Long offsetToMigrate = checkpointFileCache.get(changelogPartition);
+                    if (offsetToMigrate != null) {
+                        migrateOffsets = true;
+                        managedOffsets.put(changelogPartition, offsetToMigrate);
+                    }
+                } else {
+                    managedOffsets.put(changelogPartition, offset);
+                }
+            }
+
+            if (migrateOffsets) {
+                store.commit(managedOffsets);
+            }
+
+            checkpointFileCache.putAll(managedOffsets);
+        }
+
         try {
             restoreState(
                 stateRestoreCallback,
@@ -349,14 +375,33 @@ public class GlobalStateManagerImpl implements GlobalStateManager {
     }
 
     @Override
-    public void flush() {
+    public void commit() {
         log.debug("Flushing all global globalStores registered in the state manager");
+        final Map<TopicPartition, Long> checkpointableOffsets = new HashMap<>(checkpointFileCache.size());
         for (final Map.Entry<String, Optional<StateStore>> entry : globalStores.entrySet()) {
             if (entry.getValue().isPresent()) {
                 final StateStore store = entry.getValue().get();
                 try {
                     log.trace("Flushing global store={}", store.name());
-                    store.flush();
+
+                    // Skip non persistent store
+                    final Map<TopicPartition, Long> filteredOffsets = new HashMap<>();
+                    final String changelogTopic = changelogFor(store.name());
+                    if (changelogTopic != null) {
+                        for (final Map.Entry<TopicPartition, Long> topicPartitionOffset : checkpointFileCache.entrySet()) {
+                            final String topic = topicPartitionOffset.getKey().topic();
+                            if (store.persistent() && changelogTopic.equals(topic)) {
+                                filteredOffsets.put(topicPartitionOffset.getKey(), topicPartitionOffset.getValue());
+                            }
+                        }
+
+                        if (!store.managesCheckpoints()) {
+                            // only write a checkpoint file containing offsets for stores that don't manage them
+                            checkpointableOffsets.putAll(filteredOffsets);
+                        }
+                    }
+
+                    store.commit(filteredOffsets);
                 } catch (final RuntimeException e) {
                     throw new ProcessorStateException(
                         String.format("Failed to flush global state store %s", store.name()),
@@ -366,6 +411,14 @@ public class GlobalStateManagerImpl implements GlobalStateManager {
             } else {
                 throw new IllegalStateException("Expected " + entry.getKey() + " to have been initialized");
             }
+        }
+
+        try {
+            checkpointFile.write(checkpointableOffsets);
+        } catch (final IOException e) {
+            log.warn("Failed to write offset checkpoint file to {} for global stores: {}." +
+                " This may occur if OS cleaned the state.dir in case when it is located in the (default) ${java.io.tmpdir}/kafka-streams directory." +
+                " Changing the location of state.dir may resolve the problem", checkpointFile, e);
         }
     }
 
@@ -404,26 +457,26 @@ public class GlobalStateManagerImpl implements GlobalStateManager {
         checkpointFileCache.putAll(offsets);
     }
 
-    @Override
-    public void checkpoint() {
-        final Map<TopicPartition, Long> filteredOffsets = new HashMap<>();
-
-        // Skip non persistent store
-        for (final Map.Entry<TopicPartition, Long> topicPartitionOffset : checkpointFileCache.entrySet()) {
-            final String topic = topicPartitionOffset.getKey().topic();
-            if (!globalNonPersistentStoresTopics.contains(topic)) {
-                filteredOffsets.put(topicPartitionOffset.getKey(), topicPartitionOffset.getValue());
-            }
-        }
-
-        try {
-            checkpointFile.write(filteredOffsets);
-        } catch (final IOException e) {
-            log.warn("Failed to write offset checkpoint file to {} for global stores: {}." +
-                " This may occur if OS cleaned the state.dir in case when it is located in the (default) ${java.io.tmpdir}/kafka-streams directory." +
-                " Changing the location of state.dir may resolve the problem", checkpointFile, e);
-        }
-    }
+//    public void maybeCheckpoint() {
+//        // write legacy checkpoint file only for stores not managing their own offsets
+//        final Map<TopicPartition, Long> filteredOffsets = new HashMap<>();
+//
+//        // Skip non persistent store
+//        for (final Map.Entry<TopicPartition, Long> topicPartitionOffset : checkpointFileCache.entrySet()) {
+//            final String topic = topicPartitionOffset.getKey().topic();
+//            if (!globalNonPersistentStoresTopics.contains(topic)) {
+//                filteredOffsets.put(topicPartitionOffset.getKey(), topicPartitionOffset.getValue());
+//            }
+//        }
+//
+//        try {
+//            checkpointFile.write(filteredOffsets);
+//        } catch (final IOException e) {
+//            log.warn("Failed to write offset checkpoint file to {} for global stores: {}." +
+//                " This may occur if OS cleaned the state.dir in case when it is located in the (default) ${java.io.tmpdir}/kafka-streams directory." +
+//                " Changing the location of state.dir may resolve the problem", checkpointFile, e);
+//        }
+//    }
 
     @Override
     public TaskType taskType() {

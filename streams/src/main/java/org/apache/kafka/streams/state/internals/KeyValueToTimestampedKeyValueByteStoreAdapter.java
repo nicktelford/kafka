@@ -16,6 +16,7 @@
  */
 package org.apache.kafka.streams.state.internals;
 
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.Serializer;
 import org.apache.kafka.common.utils.Bytes;
 import org.apache.kafka.streams.KeyValue;
@@ -32,6 +33,7 @@ import org.apache.kafka.streams.state.KeyValueIterator;
 import org.apache.kafka.streams.state.KeyValueStore;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.apache.kafka.streams.state.TimestampedBytesStore.convertToTimestampedFormat;
 import static org.apache.kafka.streams.state.internals.ValueAndTimestampDeserializer.rawValue;
@@ -101,8 +103,8 @@ public class KeyValueToTimestampedKeyValueByteStoreAdapter implements KeyValueSt
     }
 
     @Override
-    public void flush() {
-        store.flush();
+    public void commit(final Map<TopicPartition, Long> changelogOffsets) {
+        store.commit(changelogOffsets);
     }
 
     @Override
@@ -118,6 +120,16 @@ public class KeyValueToTimestampedKeyValueByteStoreAdapter implements KeyValueSt
     @Override
     public boolean isOpen() {
         return store.isOpen();
+    }
+
+    @Override
+    public boolean managesCheckpoints() {
+        return store.managesCheckpoints();
+    }
+
+    @Override
+    public Long getCommittedOffset(final TopicPartition topicPartition) {
+        return store.getCommittedOffset(topicPartition);
     }
 
     @Override

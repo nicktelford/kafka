@@ -16,6 +16,7 @@
  */
 package org.apache.kafka.streams.state.internals;
 
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.Serde;
 import org.apache.kafka.common.utils.Bytes;
 import org.apache.kafka.common.utils.Time;
@@ -38,6 +39,7 @@ import org.apache.kafka.streams.state.WindowStoreIterator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Map;
 import java.util.Objects;
 
 public class TimestampedWindowStoreBuilder<K, V>
@@ -212,8 +214,8 @@ public class TimestampedWindowStoreBuilder<K, V>
         }
 
         @Override
-        public void flush() {
-            wrapped.flush();
+        public void commit(final Map<TopicPartition, Long> changelogOffsets) {
+            wrapped.commit(changelogOffsets);
         }
 
         @Override

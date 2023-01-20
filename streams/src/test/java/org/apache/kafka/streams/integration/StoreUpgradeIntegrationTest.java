@@ -50,6 +50,8 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.rules.TestName;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.time.Duration;
@@ -63,6 +65,8 @@ import static org.apache.kafka.streams.integration.utils.IntegrationTestUtils.sa
 
 @Category({IntegrationTest.class})
 public class StoreUpgradeIntegrationTest {
+
+    private final Logger log = LoggerFactory.getLogger(StoreUpgradeIntegrationTest.class);
     private static final String STORE_NAME = "store";
     private String inputStream;
 
@@ -386,6 +390,11 @@ public class StoreUpgradeIntegrationTest {
                         return false;
 
                     final ValueAndTimestamp<Long> count = store.get(key);
+                    if (count.value() == value && count.timestamp() == timestamp) {
+                        log.info("Got {}, expecting <{}, {}>", count, value, timestamp);
+                    } else {
+                        log.error("Got {}, expecting <{}, {}>", count, value, timestamp);
+                    }
                     return count.value() == value && count.timestamp() == timestamp;
                 } catch (final Exception swallow) {
                     swallow.printStackTrace();

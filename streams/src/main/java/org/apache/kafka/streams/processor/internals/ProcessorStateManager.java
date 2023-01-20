@@ -20,7 +20,6 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.utils.FixedOrderMap;
 import org.apache.kafka.common.utils.LogContext;
-import org.apache.kafka.common.utils.Utils;
 import org.apache.kafka.streams.errors.ProcessorStateException;
 import org.apache.kafka.streams.errors.StreamsException;
 import org.apache.kafka.streams.errors.TaskCorruptedException;
@@ -71,6 +70,10 @@ import static org.apache.kafka.streams.state.internals.OffsetCheckpoint.OFFSET_U
 public class ProcessorStateManager implements StateManager {
 
     public static class StateStoreMetadata {
+        // todo: move thread-detection logic from TransactionalKeyValueStore to here
+        //  instead of wrapping all stores in their StoreSupplier, wrap them here
+        //  when accessing stateStore from non-StreamThreads, return stateStore.wrapped() instead to negate overhead of checking on every op
+        // todo: how do we make this work for segmented stores though???
         private final StateStore stateStore;
 
         // corresponding changelog partition of the store, this and the following two fields
@@ -239,8 +242,9 @@ public class ProcessorStateManager implements StateManager {
     void initializeStoreOffsetsFromCheckpoint(final boolean storeDirIsEmpty) {
         try {
             final Map<TopicPartition, Long> loadedCheckpoints = checkpointFile.read();
+            final Map<TopicPartition, Long> checkpointsToWrite = new HashMap<>(loadedCheckpoints.size());
 
-            log.trace("Loaded offsets from the checkpoint file: {}", loadedCheckpoints);
+            log.info("Loaded offsets from the checkpoint file: {}", loadedCheckpoints);
 
             for (final StateStoreMetadata store : stores.values()) {
                 if (store.corrupted) {
@@ -254,38 +258,37 @@ public class ProcessorStateManager implements StateManager {
                     log.info("Initializing to the starting offset for changelog {} of in-memory state store {}",
                              store.changelogPartition, store.stateStore.name());
                 } else if (store.offset() == null) {
-                    if (loadedCheckpoints.containsKey(store.changelogPartition)) {
-                        final Long offset = changelogOffsetFromCheckpointedOffset(loadedCheckpoints.remove(store.changelogPartition));
-                        store.setOffset(offset);
-
-                        log.debug("State store {} initialized from checkpoint with offset {} at changelog {}",
-                                  store.stateStore.name(), store.offset, store.changelogPartition);
-                    } else {
-                        // with EOS, if the checkpoint file has gone missing, we don't know what state is on-disk
-                        // so we have to treat it as corrupted and wipe it all out
-                        if (eosEnabled && !storeDirIsEmpty) {
-                            log.warn("State store {} did not find checkpoint offsets while stores are not empty, " +
-                                "since under EOS it has the risk of getting uncommitted data in stores we have to " +
-                                "treat it as a task corruption error and wipe out the local state of task {} " +
-                                "before re-bootstrapping", store.stateStore.name(), taskId);
-
-                            // we no longer automatically wipe the state dir under EOS for corrupt tasks,
-                            // so we must do so explicitly here
-                            try {
-                                Utils.delete(baseDir);
-                            } catch (final IOException e) {
-                                log.error("Failed to wipe out local state for task {} at {}", taskId, baseDir, e);
+                    // load offsets and migrate legacy offsets
+                    Long offset = null;
+                    if (store.stateStore.managesCheckpoints()) {
+                        final Long storeOffset = store.stateStore.getCommittedOffset(store.changelogPartition);
+                        if (storeOffset == null) {
+                            if (loadedCheckpoints.containsKey(store.changelogPartition)) {
+                                log.info("Migrating legacy offset for store {}", store.stateStore.name());
+                                offset = changelogOffsetFromCheckpointedOffset(loadedCheckpoints.remove(store.changelogPartition));
+                            } else {
+                                handleNoCheckpointOffsets(store, storeDirIsEmpty);
                             }
-
-                            throw new TaskCorruptedException(Collections.singleton(taskId));
                         } else {
-                            log.info("State store {} did not find checkpoint offset, hence would " +
-                                "default to the starting offset at changelog {}",
-                                store.stateStore.name(), store.changelogPartition);
+                            offset = changelogOffsetFromCheckpointedOffset(storeOffset);
+                        }
+                    } else {
+                        // load offset from legacy checkpoint file
+                        if (loadedCheckpoints.containsKey(store.changelogPartition)) {
+                            final Long loadedOffset = loadedCheckpoints.remove(store.changelogPartition);
+                            checkpointsToWrite.put(store.changelogPartition, loadedOffset);
+                            offset = changelogOffsetFromCheckpointedOffset(loadedOffset);
+                        } else {
+                            handleNoCheckpointOffsets(store, storeDirIsEmpty);
                         }
                     }
+                    store.setOffset(offset);
+                    store.stateStore.commit(Collections.singletonMap(store.changelogPartition, checkpointableOffsetFromChangelogOffset(offset)));
+
+                    log.debug("State store {} initialized from checkpoint with offset {} at changelog {}",
+                            store.stateStore.name(), store.offset, store.changelogPartition);
                 }  else {
-                    loadedCheckpoints.remove(store.changelogPartition);
+                    checkpointsToWrite.put(store.changelogPartition, checkpointableOffsetFromChangelogOffset(store.offset()));
                     log.debug("Skipping re-initialization of offset from checkpoint for recycled store {}",
                               store.stateStore.name());
                 }
@@ -294,12 +297,35 @@ public class ProcessorStateManager implements StateManager {
             if (!loadedCheckpoints.isEmpty()) {
                 log.warn("Some loaded checkpoint offsets cannot find their corresponding state stores: {}", loadedCheckpoints);
             }
+
+            if (!checkpointsToWrite.isEmpty()) {
+                // write back the checkpoints, excluding those that were migrated
+                checkpointFile.write(checkpointsToWrite);
+            }
         } catch (final TaskCorruptedException e) {
             throw e;
         } catch (final IOException | RuntimeException e) {
             // both IOException or runtime exception like number parsing can throw
             throw new ProcessorStateException(format("%sError loading and deleting checkpoint file when creating the state manager",
                 logPrefix), e);
+        }
+    }
+
+    private void handleNoCheckpointOffsets(final StateStoreMetadata store, final boolean storeDirIsEmpty) {
+        // with EOS, if the checkpoint file has gone missing, we don't know what state is on-disk,
+        // so we have to treat it as corrupted and wipe it all out
+        log.info("Handling no checkpoints with {} store directory and mode: {}", storeDirIsEmpty ? "empty" : "non-empty", eosEnabled ? "EOS" : "ALOS");
+        if (eosEnabled && !storeDirIsEmpty) {
+            log.warn("State store {} did not find checkpoint offsets while stores are not empty, " +
+                    "since under EOS it has the risk of getting uncommitted data in stores we have to " +
+                    "treat it as a task corruption error and wipe out the local state of task {} " +
+                    "before re-bootstrapping", store.stateStore.name(), taskId);
+
+            throw new TaskCorruptedException(Collections.singleton(taskId));
+        } else {
+            log.info("State store {} did not find checkpoint offset, hence would " +
+                            "default to the starting offset at changelog {}",
+                    store.stateStore.name(), store.changelogPartition);
         }
     }
 
@@ -443,6 +469,9 @@ public class ProcessorStateManager implements StateManager {
                 "this should not happen.");
         }
 
+        log.info("Restoring store {} from offset {} with {} records",
+                storeMetadata.store().name(), storeMetadata.offset(), restoreRecords.size());
+
         if (!restoreRecords.isEmpty()) {
             // restore states from changelog records and update the snapshot offset as the batch end record's offset
             final Long batchEndOffset = restoreRecords.get(restoreRecords.size() - 1).offset();
@@ -470,16 +499,35 @@ public class ProcessorStateManager implements StateManager {
      *                          or flushing state store get IO errors; such error should cause the thread to die
      */
     @Override
-    public void flush() {
+    public void commit() {
         RuntimeException firstException = null;
         // attempting to flush the stores
         if (!stores.isEmpty()) {
-            log.debug("Flushing all stores registered in the state manager: {}", stores);
+            log.info("Committing all stores registered in the state manager: {}", stores);
             for (final StateStoreMetadata metadata : stores.values()) {
                 final StateStore store = metadata.stateStore;
-                log.trace("Flushing store {}", store.name());
+                log.trace("Committing store {}", store.name());
                 try {
-                    store.flush();
+                    // todo: can we incorporate updateChangelogOffsets in to this too?
+                    if (!metadata.corrupted) {
+                        store.commit(
+                                metadata.changelogPartition != null && store.persistent() && metadata.offset != null ?
+                                        Collections.singletonMap(metadata.changelogPartition, metadata.offset) :
+                                        Collections.emptyMap()
+                        );
+
+                        if (metadata.commitCallback != null) {
+                            try {
+                                metadata.commitCallback.onCommit();
+                            } catch (final IOException e) {
+                                throw new ProcessorStateException(
+                                        format("%sException caught while trying to checkpoint store, " +
+                                                "changelog partition %s", logPrefix, metadata.changelogPartition),
+                                        e
+                                );
+                            }
+                        }
+                    }
                 } catch (final RuntimeException exception) {
                     if (firstException == null) {
                         // do NOT wrap the error if it is actually caused by Streams itself
@@ -487,11 +535,14 @@ public class ProcessorStateManager implements StateManager {
                             firstException = exception;
                         else
                             firstException = new ProcessorStateException(
-                                format("%sFailed to flush state store %s", logPrefix, store.name()), exception);
+                                format("%sFailed to commit state store %s", logPrefix, store.name()), exception);
                     }
-                    log.error("Failed to flush state store {}: ", store.name(), exception);
+                    log.error("Failed to commit state store {}: ", store.name(), exception);
                 }
             }
+
+            // write a legacy checkpoint file for any stores that don't maange their checkpoints
+            maybeCheckpoint();
         }
 
         if (firstException != null) {
@@ -510,7 +561,11 @@ public class ProcessorStateManager implements StateManager {
                 try {
                     // buffer should be flushed to send all records to changelog
                     if (store instanceof TimeOrderedKeyValueBuffer) {
-                        store.flush();
+                        store.commit(
+                                metadata.changelogPartition != null ?
+                                        Collections.singletonMap(metadata.changelogPartition, metadata.offset) :
+                                        Collections.emptyMap()
+                        );
                     } else if (store instanceof CachedStateStore) {
                         ((CachedStateStore) store).flushCache();
                     }
@@ -586,7 +641,7 @@ public class ProcessorStateManager implements StateManager {
      * or unregistering the stores themselves
      */
     void recycle() {
-        log.debug("Recycling state for {} task {}.", taskType, taskId);
+        log.info("Recycling state for {} task {}.", taskType, taskId);
 
         if (!stateUpdaterEnabled) {
             final List<TopicPartition> allChangelogs = getAllChangelogTopicPartitions();
@@ -632,27 +687,15 @@ public class ProcessorStateManager implements StateManager {
         }
     }
 
-    @Override
-    public void checkpoint() {
+    private void maybeCheckpoint() {
         // checkpoint those stores that are only logged and persistent to the checkpoint file
         final Map<TopicPartition, Long> checkpointingOffsets = new HashMap<>();
         for (final StateStoreMetadata storeMetadata : stores.values()) {
-            if (storeMetadata.commitCallback != null && !storeMetadata.corrupted) {
-                try {
-                    storeMetadata.commitCallback.onCommit();
-                } catch (final IOException e) {
-                    throw new ProcessorStateException(
-                            format("%sException caught while trying to checkpoint store, " +
-                                    "changelog partition %s", logPrefix, storeMetadata.changelogPartition),
-                            e
-                    );
-                }
-            }
-
-            // store is logged, persistent, not corrupted, and has a valid current offset
+            // store is logged, persistent, not corrupted, does not manage offsets and has a valid current offset
             if (storeMetadata.changelogPartition != null &&
                 storeMetadata.stateStore.persistent() &&
-                !storeMetadata.corrupted) {
+                !storeMetadata.corrupted &&
+                !storeMetadata.stateStore.managesCheckpoints()) {
 
                 final long checkpointableOffset = checkpointableOffsetFromChangelogOffset(storeMetadata.offset);
                 checkpointingOffsets.put(storeMetadata.changelogPartition, checkpointableOffset);

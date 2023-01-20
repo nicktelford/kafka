@@ -22,6 +22,7 @@ import org.apache.kafka.streams.errors.InvalidStateStoreException;
 import org.apache.kafka.streams.processor.StateStoreContext;
 import org.apache.kafka.streams.processor.internals.StreamThread;
 import org.apache.kafka.streams.state.KeyValueIterator;
+import org.apache.kafka.streams.state.KeyValueStore;
 import org.apache.kafka.test.InternalMockProcessorContext;
 import org.apache.kafka.test.StreamsTestUtils;
 import org.apache.kafka.test.TestUtils;
@@ -32,6 +33,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 
+import java.util.Collections;
 import java.util.Properties;
 
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -94,7 +96,7 @@ public class TransactionalKeyValueStoreTest {
     public void shouldFlushTransactionOnStoreFlush() {
         store.put(KEY_1_BYTES, VALUE_ABC_BYTES);
         assertThat(store.wrapped().get(KEY_1_BYTES), is(equalTo(null)));
-        store.flush();
+        store.commit(Collections.emptyMap());
         assertThat(store.wrapped().get(KEY_1_BYTES), is(equalTo(VALUE_ABC_BYTES)));
     }
 
@@ -103,8 +105,10 @@ public class TransactionalKeyValueStoreTest {
         store.put(KEY_1_BYTES, VALUE_ABC_BYTES);
         assertThat(store.approximateNumUncommittedEntries(), is(1L));
         assertThat(store.approximateNumUncommittedBytes(), is((long) KEY_1_BYTES.get().length + VALUE_ABC_BYTES.length));
-        store.flush();
-        assertThat(store.currentTransaction.isOpen(), is(true));
+        final KeyValueStore<Bytes, byte[]> transaction = store.currentTransaction;
+        store.commit(Collections.emptyMap());
+        assertThat(transaction.isOpen(), is(false));
+        assertThat(store.currentTransaction, is(equalTo(null)));
         assertThat(store.approximateNumUncommittedBytes(), is(0L));
         assertThat(store.approximateNumUncommittedEntries(), is(0L));
     }
@@ -121,7 +125,7 @@ public class TransactionalKeyValueStoreTest {
     public void shouldCloseOpenIteratorsOnFlush() {
         final KeyValueIterator<Bytes, byte[]> it = store.all();
         assertThat(it.hasNext(), is(false));
-        store.flush();
+        store.commit(Collections.emptyMap());
         assertThrows(InvalidStateStoreException.class, it::hasNext);
     }
 

@@ -71,6 +71,10 @@ public class SmokeTestClient extends SmokeTestUtil {
         return closed;
     }
 
+    public KafkaStreams.State state() {
+        return streams.state();
+    }
+
     public void start(final Properties streamsProperties) {
         final Topology build = getTopology();
         streams = new KafkaStreams(build, getStreamsConfig(streamsProperties));
@@ -83,6 +87,10 @@ public class SmokeTestClient extends SmokeTestUtil {
             }
 
             if (newState == KafkaStreams.State.NOT_RUNNING) {
+                closed = true;
+            }
+
+            if (newState == KafkaStreams.State.ERROR) {
                 closed = true;
             }
         });

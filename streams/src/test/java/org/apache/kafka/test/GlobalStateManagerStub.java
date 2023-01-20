@@ -64,7 +64,7 @@ public class GlobalStateManagerStub implements GlobalStateManager {
                               final CommitCallback checkpoint) {}
 
     @Override
-    public void flush() {}
+    public void commit() {}
 
     @Override
     public void close() {
@@ -75,9 +75,6 @@ public class GlobalStateManagerStub implements GlobalStateManager {
     public void updateChangelogOffsets(final Map<TopicPartition, Long> writtenOffsets) {
         this.offsets.putAll(writtenOffsets);
     }
-
-    @Override
-    public void checkpoint() {}
 
     @Override
     public StateStore getStore(final String name) {

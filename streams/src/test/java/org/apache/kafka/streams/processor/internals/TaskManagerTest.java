@@ -115,6 +115,7 @@ import static org.hamcrest.Matchers.is;
 import static org.hamcrest.core.IsEqual.equalTo;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
@@ -2391,7 +2392,7 @@ public class TaskManagerTest {
 
         assertThat(uncorruptedActiveTask.commitPrepared, is(true));
         assertThat(uncorruptedActiveTask.commitNeeded, is(false));
-        assertThat(uncorruptedActiveTask.commitCompleted, is(true)); //if corrupted due to timeout on commit, should enforce checkpoint with corrupted tasks removed
+        assertThat(uncorruptedActiveTask.commitCompleted, is(false)); //if corrupted due to timeout on commit, should enforce checkpoint with corrupted tasks removed
         assertThat(corruptedActiveTask.commitPrepared, is(true));
         assertThat(corruptedActiveTask.commitNeeded, is(false));
         assertThat(corruptedActiveTask.commitCompleted, is(true)); //if corrupted, should enforce checkpoint with corrupted tasks removed
@@ -2399,7 +2400,7 @@ public class TaskManagerTest {
         assertThat(corruptedActiveTask.state(), is(Task.State.CREATED));
         assertThat(uncorruptedActiveTask.state(), is(Task.State.CREATED));
         assertThat(corruptedTaskChangelogMarkedAsCorrupted.get(), is(true));
-        assertThat(uncorruptedTaskChangelogMarkedAsCorrupted.get(), is(true));
+        assertThat(uncorruptedTaskChangelogMarkedAsCorrupted.get(), is(false));
         verify(consumer);
     }
 
@@ -2469,12 +2470,10 @@ public class TaskManagerTest {
         revokedActiveTask.setCommittableOffsetsAndMetadata(revokedActiveTaskOffsets);
         revokedActiveTask.setCommitNeeded();
 
-        final AtomicBoolean unrevokedTaskChangelogMarkedAsCorrupted = new AtomicBoolean(false);
         final StateMachineTask unrevokedActiveTask = new StateMachineTask(taskId01, taskId01Partitions, true, stateManager) {
             @Override
             public void markChangelogAsCorrupted(final Collection<TopicPartition> partitions) {
-                super.markChangelogAsCorrupted(partitions);
-                unrevokedTaskChangelogMarkedAsCorrupted.set(true);
+                fail("Should not try to mark changelogs as corrupted for uncorrupted task");
             }
         };
         final Map<TopicPartition, OffsetAndMetadata> unrevokedTaskOffsets = singletonMap(t1p1, new OffsetAndMetadata(1L, null));
@@ -2525,7 +2524,6 @@ public class TaskManagerTest {
 
         taskManager.handleRevocation(taskId00Partitions);
 
-        assertThat(unrevokedTaskChangelogMarkedAsCorrupted.get(), is(true));
         assertThat(revokedActiveTask.state(), is(State.SUSPENDED));
         assertThat(unrevokedActiveTask.state(), is(State.CREATED));
         assertThat(unrevokedActiveTaskWithoutCommitNeeded.state(), is(State.RUNNING));
@@ -4480,7 +4478,7 @@ public class TaskManagerTest {
     }
 
     @Test
-    public void shouldNotFailForTimeoutExceptionOnCommitWithEosAlpha() {
+    public void shouldNotThrowTaskCorruptedExceptionForTimeoutExceptionOnCommitWithEosAlpha() {
         final Tasks tasks = mock(Tasks.class);
         final TaskManager taskManager = setUpTaskManager(ProcessingMode.EXACTLY_ONCE_ALPHA, tasks, false);
 
@@ -4515,18 +4513,19 @@ public class TaskManagerTest {
         task00.setCommitNeeded();
         task01.setCommitNeeded();
 
-        final TaskCorruptedException exception = assertThrows(
-            TaskCorruptedException.class,
-            () -> taskManager.commit(mkSet(task00, task01, task02))
-        );
-        assertThat(
-            exception.corruptedTasks(),
-            equalTo(Collections.singleton(taskId00))
-        );
+        assertNull(task00.timeout);
+        assertNull(task01.timeout);
+        assertNull(task02.timeout);
+
+        taskManager.commit(mkSet(task00, task01, task02));
+
+        assertNotNull(task00.timeout);
+        assertNotNull(task01.timeout);
+        assertNull(task02.timeout);
     }
 
     @Test
-    public void shouldThrowTaskCorruptedExceptionForTimeoutExceptionOnCommitWithEosV2() {
+    public void shouldNotThrowTaskCorruptedExceptionForTimeoutExceptionOnCommitWithEosV2() {
         final TaskManager taskManager = setUpTaskManager(ProcessingMode.EXACTLY_ONCE_V2, false);
 
         final StreamsProducer producer = mock(StreamsProducer.class);
@@ -4553,14 +4552,15 @@ public class TaskManagerTest {
         task00.setCommitNeeded();
         task01.setCommitNeeded();
 
-        final TaskCorruptedException exception = assertThrows(
-            TaskCorruptedException.class,
-            () -> taskManager.commit(mkSet(task00, task01, task02))
-        );
-        assertThat(
-            exception.corruptedTasks(),
-            equalTo(mkSet(taskId00, taskId01))
-        );
+        assertNull(task00.timeout);
+        assertNull(task01.timeout);
+        assertNull(task02.timeout);
+
+        taskManager.commit(mkSet(task00, task01, task02));
+
+        assertNotNull(task00.timeout);
+        assertNotNull(task01.timeout);
+        assertNull(task02.timeout);
     }
 
     @Test

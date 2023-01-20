@@ -17,6 +17,7 @@
 package org.apache.kafka.streams.state;
 
 import org.apache.kafka.common.IsolationLevel;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.streams.errors.InvalidStateStoreException;
 import org.apache.kafka.streams.errors.StreamsException;
 import org.apache.kafka.streams.processor.ProcessorContext;
@@ -25,6 +26,7 @@ import org.apache.kafka.streams.processor.StateStoreContext;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Base implementation for {@link Transaction transactions} managed by an implementation of {@link
@@ -34,7 +36,7 @@ import java.util.List;
  * AbstractTransactionalStore}.
  * <p>
  * Implementations of this class should refrain from overriding any of these base implementations, and instead provide
- * implementations for {@link #commitTransaction()} and {@link #closeTransaction()}, and optionally {@link
+ * implementations for {@link #commitTransaction(Map)} and {@link #closeTransaction()}, and optionally {@link
  * #init(StateStoreContext, StateStore)}.
  *
  * @param <S> The type of the {@link StateStore} that spawned this transaction.
@@ -47,15 +49,15 @@ public abstract class AbstractTransaction<S extends StateStore> implements Trans
     protected S store;
     protected boolean isOpen = true;
 
-    public abstract void commitTransaction();
+    public abstract void commitTransaction(final Map<TopicPartition, Long> offsets);
 
     public abstract void closeTransaction();
 
     /**
      * Add a function that is run after this {@link Transaction} is closed.
      * <p>
-     * These listeners will be run even if the {@link #commitTransaction()} or {@link #closeTransaction()} methods throw
-     * an exception.
+     * These listeners will be run even if the {@link #commitTransaction(Map)} or {@link #closeTransaction()} methods
+     * throw an exception.
      *
      * @param listener A function to run after this Transaction has been closed.
      */
@@ -100,11 +102,11 @@ public abstract class AbstractTransaction<S extends StateStore> implements Trans
     }
 
     @Override
-    public void flush() {
+    public void commit(final Map<TopicPartition, Long> changelogOffsets) {
         if (!isOpen) return;
         isOpen = false;
         try {
-            commitTransaction();
+            commitTransaction(changelogOffsets);
         } finally {
             for (final Runnable listener : onCloseListeners) {
                 listener.run();
@@ -138,6 +140,11 @@ public abstract class AbstractTransaction<S extends StateStore> implements Trans
     @Override
     public boolean isOpen() {
         return isOpen;
+    }
+
+    @Override
+    public boolean managesCheckpoints() {
+        return store.managesCheckpoints();
     }
 
     @Override

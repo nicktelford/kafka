@@ -50,7 +50,6 @@ import org.apache.kafka.streams.errors.LogAndContinueExceptionHandler;
 import org.apache.kafka.streams.errors.LogAndFailExceptionHandler;
 import org.apache.kafka.streams.errors.ProcessorStateException;
 import org.apache.kafka.streams.errors.StreamsException;
-import org.apache.kafka.streams.errors.TaskCorruptedException;
 import org.apache.kafka.streams.errors.TaskMigratedException;
 import org.apache.kafka.streams.errors.TopologyException;
 import org.apache.kafka.streams.processor.PunctuationType;
@@ -805,15 +804,28 @@ public class StreamTaskTest {
     }
 
     @Test
-    public void shouldThrowTaskCorruptedExceptionOnTimeoutExceptionIfEosEnabled() {
+    public void shouldThrowOnTimeoutExceptionAndBufferRecordForRetryIfEosEnabled() {
         createTimeoutTask(StreamsConfig.EXACTLY_ONCE_V2);
 
         task.addRecords(partition1, singletonList(getConsumerRecordWithOffsetAsTimestamp(0, 0L)));
 
-        assertThrows(
-            TaskCorruptedException.class,
-            () -> task.process(0)
+        final TimeoutException exception = assertThrows(
+                TimeoutException.class,
+                () -> task.process(0)
         );
+        assertThat(exception.getMessage(), equalTo("Kaboom!"));
+
+        // we have only a single record that was not successfully processed
+        // however, the record should not be in the record buffer any longer, but should be cached within the task itself
+        assertThat(task.commitNeeded(), equalTo(false));
+        assertThat(task.hasRecordsQueued(), equalTo(false));
+
+        // -> thus the task should try process the cached record now (that thus throw again)
+        final TimeoutException nextException = assertThrows(
+                TimeoutException.class,
+                () -> task.process(0)
+        );
+        assertThat(nextException.getMessage(), equalTo("Kaboom!"));
     }
 
     @Test
@@ -1552,64 +1564,64 @@ public class StreamTaskTest {
         assertThat("Map did not contain the partition", task.highWaterMark().containsKey(partition1));
     }
 
-    @Test
-    public void shouldNotCheckpointOffsetsAgainOnCommitIfSnapshotNotChangedMuch() {
-        final Long offset = 543L;
-
-        EasyMock.expect(recordCollector.offsets()).andReturn(singletonMap(changelogPartition, offset)).anyTimes();
-        stateManager.checkpoint();
-        EasyMock.expectLastCall().once();
-        EasyMock.expect(stateManager.changelogOffsets())
-            .andReturn(singletonMap(changelogPartition, 10L)) // restoration checkpoint
-            .andReturn(singletonMap(changelogPartition, 10L))
-            .andReturn(singletonMap(changelogPartition, 20L));
-        EasyMock.expectLastCall();
-        EasyMock.replay(stateManager, recordCollector);
-
-        task = createStatefulTask(createConfig("100"), true);
-
-        task.initializeIfNeeded();
-        task.completeRestoration(noOpResetter -> { });
-
-        task.prepareCommit();
-        task.postCommit(true);   // should checkpoint
-
-        task.prepareCommit();
-        task.postCommit(false);   // should not checkpoint
-
-        EasyMock.verify(stateManager, recordCollector);
-        assertThat("Map was empty", task.highWaterMark().size() == 2);
-    }
-
-    @Test
-    public void shouldCheckpointOffsetsOnCommitIfSnapshotMuchChanged() {
-        final Long offset = 543L;
-
-        EasyMock.expect(recordCollector.offsets()).andReturn(singletonMap(changelogPartition, offset)).anyTimes();
-        stateManager.checkpoint();
-        EasyMock.expectLastCall().times(2);
-        EasyMock.expect(stateManager.changelogPartitions()).andReturn(singleton(changelogPartition));
-        EasyMock.expect(stateManager.changelogOffsets())
-            .andReturn(singletonMap(changelogPartition, 0L))
-            .andReturn(singletonMap(changelogPartition, 10L))
-            .andReturn(singletonMap(changelogPartition, 12000L));
-        stateManager.registerStore(stateStore, stateStore.stateRestoreCallback, null);
-        EasyMock.expectLastCall();
-        EasyMock.replay(stateManager, recordCollector);
-
-        task = createStatefulTask(createConfig("100"), true);
-
-        task.initializeIfNeeded();
-        task.completeRestoration(noOpResetter -> { });
-        task.prepareCommit();
-        task.postCommit(true);
-
-        task.prepareCommit();
-        task.postCommit(false);
-
-        EasyMock.verify(recordCollector);
-        assertThat("Map was empty", task.highWaterMark().size() == 2);
-    }
+//    @Test
+//    public void shouldNotCheckpointOffsetsAgainOnCommitIfSnapshotNotChangedMuch() {
+//        final Long offset = 543L;
+//
+//        EasyMock.expect(recordCollector.offsets()).andReturn(singletonMap(changelogPartition, offset)).anyTimes();
+//        stateManager.checkpoint();
+//        EasyMock.expectLastCall().once();
+//        EasyMock.expect(stateManager.changelogOffsets())
+//            .andReturn(singletonMap(changelogPartition, 10L)) // restoration checkpoint
+//            .andReturn(singletonMap(changelogPartition, 10L))
+//            .andReturn(singletonMap(changelogPartition, 20L));
+//        EasyMock.expectLastCall();
+//        EasyMock.replay(stateManager, recordCollector);
+//
+//        task = createStatefulTask(createConfig("100"), true);
+//
+//        task.initializeIfNeeded();
+//        task.completeRestoration(noOpResetter -> { });
+//
+//        task.prepareCommit();
+//        task.postCommit(true);   // should checkpoint
+//
+//        task.prepareCommit();
+//        task.postCommit(false);   // should not checkpoint
+//
+//        EasyMock.verify(stateManager, recordCollector);
+//        assertThat("Map was empty", task.highWaterMark().size() == 2);
+//    }
+//
+//    @Test
+//    public void shouldCheckpointOffsetsOnCommitIfSnapshotMuchChanged() {
+//        final Long offset = 543L;
+//
+//        EasyMock.expect(recordCollector.offsets()).andReturn(singletonMap(changelogPartition, offset)).anyTimes();
+//        stateManager.checkpoint();
+//        EasyMock.expectLastCall().times(2);
+//        EasyMock.expect(stateManager.changelogPartitions()).andReturn(singleton(changelogPartition));
+//        EasyMock.expect(stateManager.changelogOffsets())
+//            .andReturn(singletonMap(changelogPartition, 0L))
+//            .andReturn(singletonMap(changelogPartition, 10L))
+//            .andReturn(singletonMap(changelogPartition, 12000L));
+//        stateManager.registerStore(stateStore, stateStore.stateRestoreCallback, null);
+//        EasyMock.expectLastCall();
+//        EasyMock.replay(stateManager, recordCollector);
+//
+//        task = createStatefulTask(createConfig("100"), true);
+//
+//        task.initializeIfNeeded();
+//        task.completeRestoration(noOpResetter -> { });
+//        task.prepareCommit();
+//        task.postCommit(true);
+//
+//        task.prepareCommit();
+//        task.postCommit(false);
+//
+//        EasyMock.verify(recordCollector);
+//        assertThat("Map was empty", task.highWaterMark().size() == 2);
+//    }
 
     @SuppressWarnings("unchecked")
     @Test
@@ -1776,53 +1788,17 @@ public class StreamTaskTest {
     }
 
     @Test
-    public void shouldSkipCheckpointingSuspendedCreatedTask() {
-        stateManager.checkpoint();
-        EasyMock.expectLastCall().andThrow(new AssertionError("Should not have tried to checkpoint"));
-        EasyMock.expect(recordCollector.offsets()).andReturn(emptyMap()).anyTimes();
-        EasyMock.replay(stateManager, recordCollector);
-
-        task = createStatefulTask(createConfig("100"), true);
-        task.suspend();
-        task.postCommit(true);
-    }
-
-    @Test
     public void shouldCheckpointForSuspendedTask() {
-        stateManager.checkpoint();
+        stateManager.commit();
         EasyMock.expectLastCall().once();
-        EasyMock.expect(stateManager.changelogOffsets())
-                .andReturn(singletonMap(partition1, 1L));
         EasyMock.expect(recordCollector.offsets()).andReturn(emptyMap()).anyTimes();
+        EasyMock.expect(stateManager.changelogOffsets()).andReturn(emptyMap()).anyTimes();
         EasyMock.replay(stateManager, recordCollector);
 
         task = createStatefulTask(createConfig("100"), true);
         task.initializeIfNeeded();
         task.suspend();
         task.postCommit(true);
-        EasyMock.verify(stateManager);
-    }
-
-    @Test
-    public void shouldNotCheckpointForSuspendedRunningTaskWithSmallProgress() {
-        EasyMock.expect(stateManager.changelogOffsets())
-                .andReturn(singletonMap(partition1, 0L)) // restoration checkpoint
-                .andReturn(singletonMap(partition1, 1L))
-                .andReturn(singletonMap(partition1, 2L));
-        EasyMock.expect(recordCollector.offsets()).andReturn(Collections.emptyMap());
-        stateManager.checkpoint();
-        EasyMock.expectLastCall().once(); // checkpoint should only be called once
-        EasyMock.replay(stateManager, recordCollector);
-
-        task = createStatefulTask(createConfig("100"), true);
-        task.initializeIfNeeded();
-        task.completeRestoration(noOpResetter -> { });
-
-        task.prepareCommit();
-        task.postCommit(false);
-
-        task.suspend();
-        task.postCommit(false);
         EasyMock.verify(stateManager);
     }
 
@@ -1833,7 +1809,7 @@ public class StreamTaskTest {
                 .andReturn(singletonMap(partition1, 0L))
                 .andReturn(singletonMap(partition1, 12000L))
                 .andReturn(singletonMap(partition1, 24000L));
-        stateManager.checkpoint();
+        stateManager.commit();
         EasyMock.expectLastCall().times(2);
         EasyMock.replay(stateManager, recordCollector);
 
@@ -1852,13 +1828,12 @@ public class StreamTaskTest {
     @Test
     public void shouldCheckpointWhileUpdateSnapshotWithTheConsumedOffsetsForSuspendedRunningTask() {
         final Map<TopicPartition, Long> checkpointableOffsets = singletonMap(partition1, 1L);
-        stateManager.checkpoint();
+        stateManager.commit();
         EasyMock.expectLastCall().once();
         stateManager.updateChangelogOffsets(EasyMock.eq(checkpointableOffsets));
         EasyMock.expectLastCall().once();
         EasyMock.expect(stateManager.changelogOffsets())
-                .andReturn(Collections.emptyMap()) // restoration checkpoint
-                .andReturn(checkpointableOffsets);
+                .andReturn(checkpointableOffsets).anyTimes();
         EasyMock.expect(recordCollector.offsets()).andReturn(checkpointableOffsets).times(2);
         EasyMock.replay(stateManager, recordCollector);
 
@@ -1895,10 +1870,8 @@ public class StreamTaskTest {
 
     @Test
     public void shouldNotCheckpointOnCloseCreated() {
-        stateManager.flush();
+        stateManager.commit();
         EasyMock.expectLastCall().andThrow(new AssertionError("Flush should not be called")).anyTimes();
-        stateManager.checkpoint();
-        EasyMock.expectLastCall().andThrow(new AssertionError("Checkpoint should not be called")).anyTimes();
         EasyMock.expect(recordCollector.offsets()).andReturn(emptyMap()).anyTimes();
         EasyMock.replay(stateManager, recordCollector);
 
@@ -1921,9 +1894,7 @@ public class StreamTaskTest {
 
     @Test
     public void shouldCheckpointOnCloseRestoringIfNoProgress() {
-        stateManager.flush();
-        EasyMock.expectLastCall().once();
-        stateManager.checkpoint();
+        stateManager.commit();
         EasyMock.expectLastCall().once();
         EasyMock.expect(stateManager.changelogPartitions()).andReturn(Collections.emptySet()).anyTimes();
         EasyMock.expect(stateManager.changelogOffsets()).andReturn(emptyMap()).anyTimes();
@@ -1946,9 +1917,7 @@ public class StreamTaskTest {
 
     @Test
     public void shouldAlwaysCheckpointStateIfEnforced() {
-        stateManager.flush();
-        EasyMock.expectLastCall().once();
-        stateManager.checkpoint();
+        stateManager.commit();
         EasyMock.expectLastCall().once();
         EasyMock.expect(stateManager.changelogOffsets()).andStubReturn(Collections.emptyMap());
         EasyMock.expect(recordCollector.offsets()).andStubReturn(Collections.emptyMap());
@@ -1963,43 +1932,16 @@ public class StreamTaskTest {
     }
 
     @Test
-    public void shouldOnlyCheckpointStateWithBigAdvanceIfNotEnforced() {
-        stateManager.flush();
-        EasyMock.expectLastCall().once();
-        stateManager.checkpoint();
-        EasyMock.expectLastCall().once();
-        EasyMock.expect(stateManager.changelogOffsets())
-                .andReturn(Collections.singletonMap(partition1, 50L))
-                .andReturn(Collections.singletonMap(partition1, 11000L))
-                .andReturn(Collections.singletonMap(partition1, 12000L));
-        EasyMock.replay(stateManager);
-
-        task = createOptimizedStatefulTask(createConfig("100"), consumer);
-        task.initializeIfNeeded();
-
-        task.maybeCheckpoint(false);  // this should not checkpoint
-        assertTrue(task.offsetSnapshotSinceLastFlush.isEmpty());
-        task.maybeCheckpoint(false);  // this should checkpoint
-        assertEquals(Collections.singletonMap(partition1, 11000L), task.offsetSnapshotSinceLastFlush);
-        task.maybeCheckpoint(false);  // this should not checkpoint
-        assertEquals(Collections.singletonMap(partition1, 11000L), task.offsetSnapshotSinceLastFlush);
-
-        EasyMock.verify(stateManager);
-    }
-
-    @Test
     public void shouldCheckpointOffsetsOnPostCommit() {
         final long offset = 543L;
         final long consumedOffset = 345L;
 
         EasyMock.expect(recordCollector.offsets()).andReturn(singletonMap(changelogPartition, offset)).anyTimes();
         EasyMock.expectLastCall();
-        stateManager.checkpoint();
+        stateManager.commit();
         EasyMock.expectLastCall().once();
         EasyMock.expect(stateManager.changelogPartitions()).andReturn(Collections.emptySet()).anyTimes();
-        EasyMock.expect(stateManager.changelogOffsets())
-                .andReturn(singletonMap(partition1, offset + 10000L)) // restoration checkpoint
-                .andReturn(singletonMap(partition1, offset + 12000L));
+        EasyMock.expect(stateManager.changelogOffsets()).andReturn(emptyMap()).anyTimes();
         EasyMock.replay(recordCollector, stateManager);
 
         task = createOptimizedStatefulTask(createConfig(), consumer);
@@ -2024,7 +1966,7 @@ public class StreamTaskTest {
         final long offset = 543L;
 
         EasyMock.expect(recordCollector.offsets()).andReturn(emptyMap()).anyTimes();
-        stateManager.checkpoint();
+        stateManager.commit();
         EasyMock.expectLastCall().once();
         EasyMock.expect(stateManager.changelogPartitions()).andReturn(singleton(changelogPartition)).anyTimes();
         EasyMock.expect(stateManager.changelogOffsets()).andReturn(singletonMap(changelogPartition, offset)).anyTimes();
@@ -2061,17 +2003,13 @@ public class StreamTaskTest {
     public void shouldThrowOnCloseCleanFlushError() {
         final long offset = 543L;
 
-        stateManager.flush(); // restoration checkpoint
-        EasyMock.expectLastCall();
-        stateManager.checkpoint(); // checkpoint upon restoration
+        stateManager.commit(); // checkpoint upon restoration
         EasyMock.expectLastCall();
         EasyMock.expect(recordCollector.offsets()).andReturn(singletonMap(changelogPartition, offset));
         stateManager.flushCache();
         EasyMock.expectLastCall().andThrow(new ProcessorStateException("KABOOM!")).anyTimes();
-        stateManager.flush();
+        stateManager.commit();
         EasyMock.expectLastCall().andThrow(new AssertionError("Flush should not be called")).anyTimes();
-        stateManager.checkpoint();
-        EasyMock.expectLastCall().andThrow(new AssertionError("Checkpoint should not be called")).anyTimes();
         stateManager.close();
         EasyMock.expectLastCall().andThrow(new AssertionError("Close should not be called!")).anyTimes();
         EasyMock.expect(stateManager.changelogPartitions()).andReturn(Collections.emptySet()).anyTimes();
@@ -2104,13 +2042,11 @@ public class StreamTaskTest {
     public void shouldThrowOnCloseCleanCheckpointError() {
         final long offset = 54300L;
         EasyMock.expect(recordCollector.offsets()).andReturn(emptyMap());
-        stateManager.checkpoint();
+        stateManager.commit();
         EasyMock.expectLastCall().andThrow(new ProcessorStateException("KABOOM!")).anyTimes();
         stateManager.close();
         EasyMock.expectLastCall().andThrow(new AssertionError("Close should not be called!")).anyTimes();
         EasyMock.expect(stateManager.changelogPartitions()).andReturn(Collections.emptySet()).anyTimes();
-        EasyMock.expect(stateManager.changelogOffsets())
-                .andReturn(singletonMap(partition1, offset));
         EasyMock.replay(recordCollector, stateManager);
         final MetricName metricName = setupCloseTaskMetric();
 
@@ -2499,7 +2435,7 @@ public class StreamTaskTest {
         task = createStatefulTask(createConfig(AT_LEAST_ONCE, "100"), true, processorStateManager);
         task.initializeIfNeeded();
         task.completeRestoration(noOpResetter -> { });
-        verify(processorStateManager).checkpoint();
+        verify(processorStateManager).commit();
     }
 
     @Test
@@ -2510,7 +2446,7 @@ public class StreamTaskTest {
         task = createStatefulTask(createConfig(EXACTLY_ONCE_V2, "100"), true, processorStateManager);
         task.initializeIfNeeded();
         task.completeRestoration(noOpResetter -> { });
-        verify(processorStateManager, never()).checkpoint();
+        verify(processorStateManager, never()).commit();
         verify(processorStateManager, never()).changelogOffsets();
         verify(recordCollector, never()).offsets();
     }

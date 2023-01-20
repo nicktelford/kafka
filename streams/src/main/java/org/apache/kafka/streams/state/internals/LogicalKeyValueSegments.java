@@ -18,7 +18,10 @@ package org.apache.kafka.streams.state.internals;
 
 import java.util.HashMap;
 import java.util.Map;
+
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.streams.processor.ProcessorContext;
+import org.apache.kafka.streams.processor.StateStoreContext;
 import org.apache.kafka.streams.processor.internals.ProcessorContextUtils;
 import org.apache.kafka.streams.state.internals.metrics.RocksDBMetricsRecorder;
 
@@ -30,15 +33,15 @@ import org.apache.kafka.streams.state.internals.metrics.RocksDBMetricsRecorder;
  * {@link #getSegmentForTimestamp(long)}, {@link #getOrCreateSegment(long, ProcessorContext)},
  * {@link #getOrCreateSegmentIfLive(long, ProcessorContext, long)},
  * {@link #segments(long, long, boolean)}, and {@link #allSegments(boolean)}
- * only return regular segments and not reserved segments. The methods {@link #flush()}
- * and {@link #close()} flush and close both regular and reserved segments, due to
+ * only return regular segments and not reserved segments. The methods {@link #commit(Map)}
+ * and {@link #close()} commit and close both regular and reserved segments, due to
  * the fact that both types of segments share the same physical RocksDB instance.
  * To create a reserved segment, use {@link #createReservedSegment(long, String)} instead.
  */
 public class LogicalKeyValueSegments extends AbstractSegments<LogicalKeyValueSegment> {
 
     private final RocksDBMetricsRecorder metricsRecorder;
-    private final RocksDBStore physicalStore;
+    private final TransactionalRocksDBStore  physicalStore;
 
     // reserved segments do not expire, and are tracked here separately from regular segments
     private final Map<Long, LogicalKeyValueSegment> reservedSegments = new HashMap<>();
@@ -50,7 +53,9 @@ public class LogicalKeyValueSegments extends AbstractSegments<LogicalKeyValueSeg
                             final RocksDBMetricsRecorder metricsRecorder) {
         super(name, retentionPeriod, segmentInterval);
         this.metricsRecorder = metricsRecorder;
-        this.physicalStore = new RocksDBStore(name, parentDir, metricsRecorder, false);
+        this.physicalStore = new TransactionalRocksDBStore(
+                new RocksDBStore(name, parentDir, metricsRecorder, false)
+        );
     }
 
     @Override
@@ -98,7 +103,7 @@ public class LogicalKeyValueSegments extends AbstractSegments<LogicalKeyValueSeg
     @Override
     public void openExisting(final ProcessorContext context, final long streamTime) {
         metricsRecorder.init(ProcessorContextUtils.getMetricsImpl(context), context.taskId());
-        physicalStore.openDB(context.appConfigs(), context.stateDir());
+        physicalStore.init((StateStoreContext) context, null);
     }
 
     @Override
@@ -107,8 +112,8 @@ public class LogicalKeyValueSegments extends AbstractSegments<LogicalKeyValueSeg
     }
 
     @Override
-    public void flush() {
-        physicalStore.flush();
+    public void commit(final Map<TopicPartition, Long> changelogOffsets) {
+        physicalStore.commit(changelogOffsets);
     }
 
     @Override

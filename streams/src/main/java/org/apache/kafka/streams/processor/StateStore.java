@@ -17,6 +17,7 @@
 package org.apache.kafka.streams.processor;
 
 import org.apache.kafka.common.IsolationLevel;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.annotation.InterfaceStability.Evolving;
 import org.apache.kafka.streams.errors.StreamsException;
 import org.apache.kafka.streams.processor.api.ProcessorContext;
@@ -28,6 +29,9 @@ import org.apache.kafka.streams.query.Query;
 import org.apache.kafka.streams.query.QueryConfig;
 import org.apache.kafka.streams.query.QueryResult;
 import org.apache.kafka.streams.state.Transaction;
+
+import java.util.Collections;
+import java.util.Map;
 
 /**
  * A storage engine for managing state maintained by a stream processor.
@@ -123,8 +127,52 @@ public interface StateStore {
 
     /**
      * Flush any cached data
+     * @deprecated Use {@link #commit(Map)} instead.
      */
-    void flush();
+    @Deprecated
+    default void flush() {
+        commit(Collections.emptyMap());
+    }
+
+    /**
+     * todo: document
+     * @param changelogOffsets The input/changelog topic offsets of the records being committed.
+     */
+    default void commit(final Map<TopicPartition, Long> changelogOffsets) {
+        flush();
+    }
+
+    /**
+     * Returns whether this StateStore manages its own changelog offsets.
+     * <p>
+     * This can only return {@code true} if {@link #persistent()} also returns {@code true}, as non-persistent stores
+     * have no checkpoints to manage.
+     *
+     * @return Whether this StateStore manages its own changelog offsets.
+     */
+    default boolean managesCheckpoints() {
+        return false;
+    }
+
+    /**
+     * Returns the committed offset for the given partition.
+     * <p>
+     * If this store is not {@link #persistent()} or does not {@link #managesCheckpoints() manage its own checkpoints},
+     * it will always yield {@code null}.
+     * <p>
+     * If {@code topicPartition} is a changelog partition or Topology input partition for this StateStore, this method
+     * will return the committed offset for that partition.
+     * <p>
+     * If no committed offset exists for the given partition, or if the partition is not a changelog or input partition
+     * for the store, {@code null} will be returned.
+     *
+     * @param topicPartition The changelog/input partition to get the committed offset for.
+     * @return The committed offset for the given partition, or {@code null} if no committed offset exists, or if this
+     *         store does not contain committed offsets.
+     */
+    default Long getCommittedOffset(final TopicPartition topicPartition) {
+        return null;
+    }
 
     /**
      * Close the storage engine.

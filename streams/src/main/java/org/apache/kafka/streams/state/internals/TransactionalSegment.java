@@ -16,6 +16,7 @@
  */
 package org.apache.kafka.streams.state.internals;
 
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.utils.Bytes;
 import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.processor.StateStore;
@@ -23,6 +24,7 @@ import org.rocksdb.RocksDBException;
 import org.rocksdb.WriteBatchInterface;
 
 import java.io.IOException;
+import java.util.Map;
 
 public class TransactionalSegment<S extends Segment>
         extends TransactionalKeyValueStore<S, Bytes, byte[]> implements Segment {
@@ -51,6 +53,12 @@ public class TransactionalSegment<S extends Segment>
     public void addToBatch(final KeyValue<byte[], byte[]> record,
                            final WriteBatchInterface batch) throws RocksDBException {
         currentTransaction().addToBatch(record, batch);
+    }
+
+    @Override
+    public void addOffsetsToBatch(final Map<TopicPartition, Long> changelogOffsets,
+                                  final WriteBatchInterface batch) throws RocksDBException {
+        currentTransaction().addOffsetsToBatch(changelogOffsets, batch);
     }
 
     @Override
