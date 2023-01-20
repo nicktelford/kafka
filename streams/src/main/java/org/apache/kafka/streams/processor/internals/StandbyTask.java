@@ -261,9 +261,6 @@ public class StandbyTask extends AbstractTask implements Task {
                     clean,
                     () -> StateManagerUtil.closeStateManager(
                         log,
-                        logPrefix,
-                        clean,
-                        eosEnabled,
                         stateMgr,
                         stateDirectory,
                         TaskType.STANDBY
