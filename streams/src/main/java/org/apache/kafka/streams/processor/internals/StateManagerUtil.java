@@ -16,12 +16,9 @@
  */
 package org.apache.kafka.streams.processor.internals;
 
-import java.io.IOException;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.kafka.common.TopicPartition;
-import org.apache.kafka.common.utils.Utils;
 import org.apache.kafka.streams.errors.LockException;
 import org.apache.kafka.streams.errors.ProcessorStateException;
 import org.apache.kafka.streams.errors.StreamsException;
@@ -113,51 +110,20 @@ final class StateManagerUtil {
      * @throws ProcessorStateException if there is an error while closing the state manager
      */
     static void closeStateManager(final Logger log,
-                                  final String logPrefix,
-                                  final boolean closeClean,
-                                  final boolean eosEnabled,
                                   final ProcessorStateManager stateMgr,
                                   final StateDirectory stateDirectory,
                                   final TaskType taskType) {
-        // if EOS is enabled, wipe out the whole state store for unclean close since it is now invalid
-        final boolean wipeStateStore = !closeClean && eosEnabled;
-
         final TaskId id = stateMgr.taskId();
         log.trace("Closing state manager for {} task {}", taskType, id);
 
-        final AtomicReference<ProcessorStateException> firstException = new AtomicReference<>(null);
-        try {
-            if (stateDirectory.lock(id)) {
-                try {
-                    stateMgr.close();
-                } catch (final ProcessorStateException e) {
-                    firstException.compareAndSet(null, e);
-                } finally {
-                    try {
-                        if (wipeStateStore) {
-                            log.debug("Wiping state stores for {} task {}", taskType, id);
-                            // we can just delete the whole dir of the task, including the state store images and the checkpoint files,
-                            // and then we write an empty checkpoint file indicating that the previous close is graceful and we just
-                            // need to re-bootstrap the restoration from the beginning
-                            Utils.delete(stateMgr.baseDir());
-                        }
-                    } finally {
-                        stateDirectory.unlock(id);
-                    }
-                }
-            } else {
-                log.error("Failed to acquire lock while closing the state store for {} task {}", taskType, id);
+        if (stateDirectory.lock(id)) {
+            try {
+                stateMgr.close();
+            } finally {
+                stateDirectory.unlock(id);
             }
-        } catch (final IOException e) {
-            final ProcessorStateException exception = new ProcessorStateException(
-                String.format("%sFatal error while trying to close the state manager for task %s", logPrefix, id), e
-            );
-            firstException.compareAndSet(null, exception);
-        }
-
-        final ProcessorStateException exception = firstException.get();
-        if (exception != null) {
-            throw exception;
+        } else {
+            log.error("Failed to acquire lock while closing the state store for {} task {}", taskType, id);
         }
     }
 
