@@ -20,23 +20,37 @@ import org.apache.kafka.common.serialization.Serializer;
 import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.processor.StateStore;
 import org.apache.kafka.streams.processor.StateStoreContext;
+import org.apache.kafka.streams.processor.internals.StreamThread;
 import org.apache.kafka.streams.state.KeyValueIterator;
 import org.apache.kafka.streams.state.KeyValueStore;
 
 import java.util.List;
+import java.util.function.Supplier;
 
 public class TransactionalKeyValueStore<S extends KeyValueStore<K, V>, K, V>
         extends WrappedStateStore<S, K, V> implements KeyValueStore<K, V> {
-    protected KeyValueStore<K, V> currentTransaction;
+    KeyValueStore<K, V> currentTransaction;
 
-    public TransactionalKeyValueStore(final S wrapped) {
-        super(wrapped);
+    private Supplier<Thread> currentThread;
+
+    protected KeyValueStore<K, V> currentTransaction() {
+        if (currentThread.get() instanceof StreamThread) {
+            if (currentTransaction == null) {
+                currentTransaction = newTransaction();
+            }
+            return currentTransaction;
+        } else {
+            return wrapped();
+        }
     }
 
-    @Override
-    public void init(final StateStoreContext context, final StateStore root) {
-        super.init(context, root);
-        this.currentTransaction = newTransaction();
+    public TransactionalKeyValueStore(final S wrapped) {
+        this(wrapped, Thread::currentThread);
+    }
+
+    public TransactionalKeyValueStore(final S wrapped, final Supplier<Thread> currentThread) {
+        super(wrapped);
+        this.currentThread = currentThread;
     }
 
     @Override @SuppressWarnings("unchecked")
@@ -52,8 +66,12 @@ public class TransactionalKeyValueStore<S extends KeyValueStore<K, V>, K, V>
 
     @Override @SuppressWarnings("unchecked")
     public void flush() {
-        currentTransaction.flush();
-        currentTransaction = (KeyValueStore<K, V>) currentTransaction.newTransaction();
+        if (currentTransaction != null) {
+            currentTransaction.flush();
+            currentTransaction = (KeyValueStore<K, V>) currentTransaction.newTransaction();
+        } else {
+            currentTransaction();
+        }
     }
 
     @Override
@@ -64,57 +82,57 @@ public class TransactionalKeyValueStore<S extends KeyValueStore<K, V>, K, V>
 
     @Override
     public V get(final K key) {
-        return currentTransaction.get(key);
+        return currentTransaction().get(key);
     }
 
     @Override
     public KeyValueIterator<K, V> range(final K from, final K to) {
-        return currentTransaction.range(from, to);
+        return currentTransaction().range(from, to);
     }
 
     @Override
     public KeyValueIterator<K, V> reverseRange(final K from, final K to) {
-        return currentTransaction.reverseRange(from, to);
+        return currentTransaction().reverseRange(from, to);
     }
 
     @Override
     public KeyValueIterator<K, V> all() {
-        return currentTransaction.all();
+        return currentTransaction().all();
     }
 
     @Override
     public KeyValueIterator<K, V> reverseAll() {
-        return currentTransaction.reverseAll();
+        return currentTransaction().reverseAll();
     }
 
     @Override
     public <PS extends Serializer<P>, P> KeyValueIterator<K, V> prefixScan(final P prefix,
                                                                            final PS prefixKeySerializer) {
-        return currentTransaction.prefixScan(prefix, prefixKeySerializer);
+        return currentTransaction().prefixScan(prefix, prefixKeySerializer);
     }
 
     @Override
     public void put(final K key, final V value) {
-        currentTransaction.put(key, value);
+        currentTransaction().put(key, value);
     }
 
     @Override
     public V putIfAbsent(final K key, final V value) {
-        return currentTransaction.putIfAbsent(key, value);
+        return currentTransaction().putIfAbsent(key, value);
     }
 
     @Override
     public void putAll(final List<KeyValue<K, V>> entries) {
-        currentTransaction.putAll(entries);
+        currentTransaction().putAll(entries);
     }
 
     @Override
     public V delete(final K key) {
-        return currentTransaction.delete(key);
+        return currentTransaction().delete(key);
     }
 
     @Override
     public long approximateNumEntries() {
-        return currentTransaction.approximateNumEntries();
+        return currentTransaction().approximateNumEntries();
     }
 }
