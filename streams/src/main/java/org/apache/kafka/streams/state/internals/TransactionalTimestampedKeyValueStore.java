@@ -19,9 +19,15 @@ package org.apache.kafka.streams.state.internals;
 import org.apache.kafka.streams.state.KeyValueStore;
 import org.apache.kafka.streams.state.TimestampedBytesStore;
 
+import java.util.function.Supplier;
+
 public class TransactionalTimestampedKeyValueStore<S extends KeyValueStore<K, V>, K, V>
         extends TransactionalKeyValueStore<S, K, V> implements TimestampedBytesStore {
     public TransactionalTimestampedKeyValueStore(final S wrapped) {
         super(wrapped);
+    }
+
+    public TransactionalTimestampedKeyValueStore(final S wrapped, final Supplier<Thread> currentThread) {
+        super(wrapped, currentThread);
     }
 }

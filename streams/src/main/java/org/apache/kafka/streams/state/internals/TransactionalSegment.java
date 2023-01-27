@@ -27,8 +27,9 @@ import java.io.IOException;
 public class TransactionalSegment<S extends Segment>
         extends TransactionalKeyValueStore<S, Bytes, byte[]> implements Segment {
 
-    private Segment currentTransaction() {
-        return (Segment) currentTransaction;
+    @Override
+    protected Segment currentTransaction() {
+        return (Segment) super.currentTransaction();
     }
 
     TransactionalSegment(final S wrapped) {

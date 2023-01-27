@@ -20,10 +20,12 @@ import org.apache.kafka.common.utils.Bytes;
 import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.errors.InvalidStateStoreException;
 import org.apache.kafka.streams.processor.StateStoreContext;
+import org.apache.kafka.streams.processor.internals.StreamThread;
 import org.apache.kafka.streams.state.KeyValueIterator;
 import org.apache.kafka.test.InternalMockProcessorContext;
 import org.apache.kafka.test.StreamsTestUtils;
 import org.apache.kafka.test.TestUtils;
+import org.easymock.EasyMock;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -35,7 +37,6 @@ import java.util.Properties;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.core.IsEqual.equalTo;
 import static org.hamcrest.core.Is.is;
-import static org.hamcrest.core.IsNot.not;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @RunWith(Parameterized.class)
@@ -67,8 +68,11 @@ public class TransactionalKeyValueStoreTest {
 
     @Before @SuppressWarnings("unchecked")
     public void setUp() {
-        final RocksDbKeyValueBytesStoreSupplier supplier = new RocksDbKeyValueBytesStoreSupplier(STORE_NAME, timestamped);
-        store = (TransactionalKeyValueStore<RocksDBStore, Bytes, byte[]>) supplier.get();
+        final StreamThread mockStreamThread = EasyMock.mock(StreamThread.class);
+        store = timestamped ?
+                new TransactionalTimestampedKeyValueStore<>(new RocksDBTimestampedStore(STORE_NAME, "rocksdb"), () -> mockStreamThread) :
+                new TransactionalKeyValueStore<>(new RocksDBStore(STORE_NAME, "rocksdb"), () -> mockStreamThread);
+
         context = new InternalMockProcessorContext<>(TestUtils.tempDirectory(), CONFIG);
         store.init((StateStoreContext) context, store);
     }
@@ -76,13 +80,6 @@ public class TransactionalKeyValueStoreTest {
     @After
     public void tearDown() {
         store.close();
-    }
-
-    @Test
-    public void shouldHaveTransactionAfterInit() {
-        // init is called in setUp, therefore a transaction should already be active
-        assertThat(store.currentTransaction, is(not(equalTo(null))));
-        assertThat(store.currentTransaction.isOpen(), is(true));
     }
 
     // todo: equivalent tests for all other KeyValueStore methods
@@ -114,6 +111,8 @@ public class TransactionalKeyValueStoreTest {
 
     @Test
     public void shouldCloseTransactionOnClose() {
+        store.put(KEY_1_BYTES, VALUE_ABC_BYTES);
+        assertThat(store.currentTransaction.isOpen(), is(true));
         store.close();
         assertThat(store.currentTransaction.isOpen(), is(false));
     }
@@ -132,5 +131,14 @@ public class TransactionalKeyValueStoreTest {
         assertThat(it.hasNext(), is(false));
         store.close();
         assertThrows(InvalidStateStoreException.class, it::hasNext);
+    }
+
+    @Test
+    public void shouldQueryStoreDirectlyForInteractiveQueries() {
+        final TransactionalKeyValueStore<RocksDBStore, Bytes, byte[]> interactiveStore = new TransactionalKeyValueStore<>(store.wrapped());
+        assertThat(interactiveStore.currentTransaction, is(equalTo(null)));
+        interactiveStore.wrapped().put(KEY_1_BYTES, VALUE_ABC_BYTES);
+        assertThat(interactiveStore.get(KEY_1_BYTES), is(equalTo(VALUE_ABC_BYTES)));
+        assertThat(interactiveStore.currentTransaction, is(equalTo(null)));
     }
 }
