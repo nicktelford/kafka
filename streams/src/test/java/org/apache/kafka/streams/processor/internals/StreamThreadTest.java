@@ -271,7 +271,8 @@ public class StreamThreadTest {
             new MockStateRestoreListener(),
             threadIdx,
             null,
-            HANDLER
+            HANDLER,
+            -1L
         );
     }
 
@@ -578,7 +579,8 @@ public class StreamThreadTest {
             new MockStateRestoreListener(),
             threadIdx,
             null,
-            null
+            null,
+            -1L
         );
 
         mockConsumer.enforceRebalance("Scheduled probing rebalance");
@@ -638,7 +640,8 @@ public class StreamThreadTest {
             new MockStateRestoreListener(),
             threadIdx,
             null,
-            null
+            null,
+            -1L
         );
 
         mockClientSupplier.nextRebalanceMs().set(mockTime.milliseconds() - 1L);
@@ -1705,7 +1708,8 @@ public class StreamThreadTest {
             new MockStateRestoreListener(),
             threadIdx,
             null,
-            HANDLER
+            HANDLER,
+            -1L
         );
 
         thread.setState(StreamThread.State.STARTING);
