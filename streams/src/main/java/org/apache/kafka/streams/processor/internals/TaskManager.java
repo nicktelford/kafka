@@ -1639,9 +1639,22 @@ public class TaskManager {
         }
     }
 
+    private long lastUncommittedEntries = 0L;
+    private long lastUncommittedBytes = 0L;
+
     boolean needsCommit() {
-        return (maxUncommittedStateRecords > -1 && tasks.approximateUncommittedStateEntries() > maxUncommittedStateRecords)
-                || (maxUncommittedStateBytes > -1 && tasks.approximateUncommittedStateBytes() > maxUncommittedStateBytes);
+        // force an early commit if the uncommitted entries/bytes exceeds or is *likely to exceed* the configured threshold
+        final long uncommittedEntries = tasks.approximateUncommittedStateEntries();
+        final long uncommittedBytes = tasks.approximateUncommittedStateBytes();
+
+        final long deltaEntries = Math.min(uncommittedEntries, Math.max(uncommittedEntries, uncommittedEntries - lastUncommittedEntries));
+        final long deltaBytes = Math.min(uncommittedBytes, Math.max(uncommittedBytes, uncommittedBytes - lastUncommittedBytes));
+
+        lastUncommittedEntries = uncommittedEntries;
+        lastUncommittedBytes = uncommittedBytes;
+
+        return (maxUncommittedStateRecords > -1 && uncommittedEntries + deltaEntries > maxUncommittedStateRecords)
+                || (maxUncommittedStateBytes > -1 && uncommittedBytes + deltaBytes > maxUncommittedStateBytes);
     }
 
     /**
@@ -1657,6 +1670,8 @@ public class TaskManager {
         final Map<Task, Map<TopicPartition, OffsetAndMetadata>> consumedOffsetsAndMetadataPerTask = new HashMap<>();
         try {
             committed = commitTasksAndMaybeUpdateCommittableOffsets(tasksToCommit, consumedOffsetsAndMetadataPerTask);
+            lastUncommittedEntries = 0L;
+            lastUncommittedBytes = 0L;
         } catch (final TimeoutException timeoutException) {
             consumedOffsetsAndMetadataPerTask
                 .keySet()
