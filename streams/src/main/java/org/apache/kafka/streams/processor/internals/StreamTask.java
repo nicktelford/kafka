@@ -498,7 +498,11 @@ public class StreamTask extends AbstractTask implements ProcessorNodePunctuator,
                 break;
 
             case RUNNING:
-                maybeCheckpoint(enforceCheckpoint);
+                // the change here caused change in flush frequency
+                // todo: how do we stop OOM on maxUncommittedBytes = -1, because transactions would grow indefinitely due to no checkpoint/flush?
+                if (enforceCheckpoint || !eosEnabled) {
+                    maybeCheckpoint(enforceCheckpoint);
+                }
                 log.debug("Finalized commit for {} task with eos {} enforce checkpoint {}", state(), eosEnabled, enforceCheckpoint);
 
                 break;
