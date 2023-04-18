@@ -340,7 +340,8 @@ public class StreamThread extends Thread {
                                       final StateRestoreListener userStateRestoreListener,
                                       final int threadIdx,
                                       final Runnable shutdownErrorHook,
-                                      final BiConsumer<Throwable, Boolean> streamsUncaughtExceptionHandler) {
+                                      final BiConsumer<Throwable, Boolean> streamsUncaughtExceptionHandler,
+                                      final long maxUncommittedBytes) {
         final String threadId = clientId + "-StreamThread-" + threadIdx;
 
         final String logPrefix = String.format("stream-thread [%s] ", threadId);
@@ -405,7 +406,7 @@ public class StreamThread extends Thread {
             adminClient,
             stateDirectory,
             maybeCreateAndStartStateUpdater(stateUpdaterEnabled, streamsMetrics, config, changelogReader, topologyMetadata, time, clientId, threadIdx),
-            config.getLong(StreamsConfig.STATESTORE_UNCOMMITTED_MAX_BYTES_CONFIG)
+            maxUncommittedBytes
         );
         referenceContainer.taskManager = taskManager;
 
