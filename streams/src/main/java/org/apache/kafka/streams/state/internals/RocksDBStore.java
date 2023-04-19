@@ -557,6 +557,10 @@ public class RocksDBStore
         if (db == null) {
             return;
         }
+        if (restoreBuffer != null) {
+            restoreBuffer.close();
+            restoreBuffer = null;
+        }
         try {
             cf.flush();
         } catch (final RocksDBException e) {
@@ -590,6 +594,11 @@ public class RocksDBStore
         open = false;
         closeOpenIterators();
         closeOpenTransactions();
+
+        if (restoreBuffer != null) {
+            restoreBuffer.close();
+            restoreBuffer = null;
+        }
 
         if (configSetter != null) {
             configSetter.close(name, userSpecifiedOptions);
@@ -854,8 +863,14 @@ public class RocksDBStore
         }
     }
 
+    private WriteBatch restoreBuffer = null;
+
     void restoreBatch(final Collection<ConsumerRecord<byte[], byte[]>> records) {
-        try (final WriteBatch batch = new WriteBatch()) {
+        if (restoreBuffer == null) {
+            restoreBuffer = new WriteBatch();
+        }
+
+        try {
             for (final ConsumerRecord<byte[], byte[]> record : records) {
                 ChangelogRecordDeserializationHelper.applyChecksAndUpdatePosition(
                     record,
@@ -863,13 +878,14 @@ public class RocksDBStore
                     position
                 );
                 // If version headers are not present or version is V0
-                cf.addToBatch(record.key(), record.value(), batch);
+                cf.addToBatch(record.key(), record.value(), restoreBuffer);
             }
-            write(batch);
+            write(restoreBuffer);
         } catch (final RocksDBException e) {
             throw new ProcessorStateException("Error restoring batch to store " + name, e);
+        } finally {
+            restoreBuffer.clear();
         }
-
     }
 
     // for testing
