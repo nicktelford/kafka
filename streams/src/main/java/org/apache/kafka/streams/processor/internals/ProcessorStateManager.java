@@ -510,9 +510,10 @@ public class ProcessorStateManager implements StateManager {
                 try {
                     // todo: can we incorporate updateChangelogOffsets in to this too?
                     if (!metadata.corrupted) {
+                        final long checkpointOffset = checkpointableOffsetFromChangelogOffset(metadata.offset);
                         store.commit(
-                                metadata.changelogPartition != null && store.persistent() && metadata.offset != null ?
-                                        Collections.singletonMap(metadata.changelogPartition, metadata.offset) :
+                                metadata.changelogPartition != null && store.persistent() ?
+                                        Collections.singletonMap(metadata.changelogPartition, checkpointOffset) :
                                         Collections.emptyMap()
                         );
 
@@ -561,9 +562,10 @@ public class ProcessorStateManager implements StateManager {
                 try {
                     // buffer should be flushed to send all records to changelog
                     if (store instanceof TimeOrderedKeyValueBuffer) {
+                        final long checkpointOffset = checkpointableOffsetFromChangelogOffset(metadata.offset);
                         store.commit(
                                 metadata.changelogPartition != null ?
-                                        Collections.singletonMap(metadata.changelogPartition, metadata.offset) :
+                                        Collections.singletonMap(metadata.changelogPartition, checkpointOffset) :
                                         Collections.emptyMap()
                         );
                     } else if (store instanceof CachedStateStore) {
