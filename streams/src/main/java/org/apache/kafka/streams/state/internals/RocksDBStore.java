@@ -1066,7 +1066,7 @@ public class RocksDBStore
 
         @Override
         public void flush() throws RocksDBException {
-            db.flush(fOptions, columnFamily);
+            db.flush(fOptions, Arrays.asList(columnFamily, offsetsCf));
         }
 
         @Override

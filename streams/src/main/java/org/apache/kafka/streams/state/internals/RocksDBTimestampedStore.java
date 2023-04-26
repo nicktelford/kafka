@@ -35,6 +35,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.NoSuchElementException;
@@ -235,8 +236,7 @@ public class RocksDBTimestampedStore extends RocksDBStore implements Timestamped
 
         @Override
         public void flush() throws RocksDBException {
-            db.flush(fOptions, oldColumnFamily);
-            db.flush(fOptions, newColumnFamily);
+            db.flush(fOptions, Arrays.asList(oldColumnFamily, newColumnFamily, offsetsCf));
         }
 
         @Override
