@@ -50,7 +50,6 @@ import org.apache.kafka.streams.errors.LogAndContinueExceptionHandler;
 import org.apache.kafka.streams.errors.LogAndFailExceptionHandler;
 import org.apache.kafka.streams.errors.ProcessorStateException;
 import org.apache.kafka.streams.errors.StreamsException;
-import org.apache.kafka.streams.errors.TaskCorruptedException;
 import org.apache.kafka.streams.errors.TaskMigratedException;
 import org.apache.kafka.streams.errors.TopologyException;
 import org.apache.kafka.streams.processor.PunctuationType;
@@ -805,13 +804,13 @@ public class StreamTaskTest {
     }
 
     @Test
-    public void shouldThrowTaskCorruptedExceptionOnTimeoutExceptionIfEosEnabled() {
+    public void shouldNotThrowTaskCorruptedExceptionOnTimeoutExceptionIfEosEnabled() {
         createTimeoutTask(StreamsConfig.EXACTLY_ONCE_V2);
 
         task.addRecords(partition1, singletonList(getConsumerRecordWithOffsetAsTimestamp(0, 0L)));
 
         assertThrows(
-            TaskCorruptedException.class,
+            TimeoutException.class,
             () -> task.process(0)
         );
     }
