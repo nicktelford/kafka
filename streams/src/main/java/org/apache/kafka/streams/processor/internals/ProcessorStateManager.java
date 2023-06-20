@@ -20,7 +20,6 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.utils.FixedOrderMap;
 import org.apache.kafka.common.utils.LogContext;
-import org.apache.kafka.common.utils.Utils;
 import org.apache.kafka.streams.errors.ProcessorStateException;
 import org.apache.kafka.streams.errors.StreamsException;
 import org.apache.kafka.streams.errors.TaskCorruptedException;
@@ -268,14 +267,6 @@ public class ProcessorStateManager implements StateManager {
                                 "since under EOS it has the risk of getting uncommitted data in stores we have to " +
                                 "treat it as a task corruption error and wipe out the local state of task {} " +
                                 "before re-bootstrapping", store.stateStore.name(), taskId);
-
-                            // we no longer automatically wipe the state dir under EOS for corrupt tasks,
-                            // so we must do so explicitly here
-                            try {
-                                Utils.delete(baseDir);
-                            } catch (final IOException e) {
-                                log.error("Failed to wipe out local state for task {} at {}", taskId, baseDir, e);
-                            }
 
                             throw new TaskCorruptedException(Collections.singleton(taskId));
                         } else {

@@ -634,6 +634,9 @@ public class StreamTask extends AbstractTask implements ProcessorNodePunctuator,
                     clean,
                     () -> StateManagerUtil.closeStateManager(
                         log,
+                        logPrefix,
+                        clean,
+                        eosEnabled,
                         stateMgr,
                         stateDirectory,
                         TaskType.ACTIVE
