@@ -26,15 +26,12 @@ import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.streams.errors.StreamsException;
 import org.apache.kafka.streams.errors.TaskCorruptedException;
 import org.apache.kafka.streams.errors.TaskMigratedException;
-import org.apache.kafka.streams.processor.TaskId;
 import org.slf4j.Logger;
 
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.Set;
 import java.util.stream.Collectors;
 
 import static org.apache.kafka.streams.internals.StreamsConfigUtils.ProcessingMode.EXACTLY_ONCE_ALPHA;
@@ -175,8 +172,6 @@ public class TaskExecutor {
     void commitOffsetsOrTransaction(final Map<Task, Map<TopicPartition, OffsetAndMetadata>> offsetsPerTask) {
         log.debug("Committing task offsets {}", offsetsPerTask.entrySet().stream().collect(Collectors.toMap(t -> t.getKey().id(), Entry::getValue))); // avoid logging actual Task objects
 
-        final Set<TaskId> corruptedTasks = new HashSet<>();
-
         if (executionMetadata.processingMode() == EXACTLY_ONCE_ALPHA) {
             for (final Task task : taskManager.activeTaskIterable()) {
                 final Map<TopicPartition, OffsetAndMetadata> taskOffsetsToCommit = offsetsPerTask.getOrDefault(task, emptyMap());
@@ -190,7 +185,7 @@ public class TaskExecutor {
                             String.format("Committing task %s failed.", task.id()),
                             timeoutException
                         );
-                        corruptedTasks.add(task.id());
+                        throw timeoutException;
                     }
                 }
             }
@@ -212,9 +207,7 @@ public class TaskExecutor {
                                           .collect(Collectors.joining(", "))),
                         timeoutException
                     );
-                    offsetsPerTask
-                        .keySet()
-                        .forEach(task -> corruptedTasks.add(task.id()));
+                    throw timeoutException;
                 }
             }
         } else {
@@ -244,9 +237,6 @@ public class TaskExecutor {
                     throw new StreamsException("Error encountered committing offsets via consumer", error);
                 }
             }
-        }
-        if (!corruptedTasks.isEmpty()) {
-            throw new TaskCorruptedException(corruptedTasks);
         }
     }
 
