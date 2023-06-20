@@ -105,11 +105,6 @@ public class GlobalStateManagerStub implements GlobalStateManager {
     }
 
     @Override
-    public long approximateNumUncommittedEntries() {
-        return 0;
-    }
-
-    @Override
     public long approximateNumUncommittedBytes() {
         return 0;
     }

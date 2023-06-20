@@ -59,12 +59,6 @@ public interface StateManager {
     StateStore getGlobalStore(final String name);
 
     /**
-     * @return The approximate number of records not yet committed to {@link StateStore state stores} managed by this
-     *         StateManager.
-     */
-    long approximateNumUncommittedEntries();
-
-    /**
      * @return The approximate total size of all records not yet committed to {@link StateStore state stores} managed
      *         by this StateManager.
      */

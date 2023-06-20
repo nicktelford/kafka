@@ -88,13 +88,8 @@ class RocksDBTransaction<S extends RocksDBStore> extends AbstractTransaction<S> 
         }
 
         @Override
-        public long approximateNumCommittedEntries(final ColumnFamilyHandle columnFamily) throws RocksDBException {
-            return db.getLongProperty(columnFamily, "rocksdb.estimate-num-keys");
-        }
-
-        @Override
-        public long approximateNumUncommittedEntries() {
-            return batch.count();
+        public long approximateNumEntries(final ColumnFamilyHandle columnFamily) throws RocksDBException {
+            return batch.count() + db.getLongProperty(columnFamily, "rocksdb.estimate-num-keys");
         }
 
         @Override
@@ -244,7 +239,7 @@ class RocksDBTransaction<S extends RocksDBStore> extends AbstractTransaction<S> 
     public long approximateNumEntries() {
         validateIsOpen();
         try {
-            return accessor.approximateNumUncommittedEntries() + cf.approximateNumEntries(accessor);
+            return cf.approximateNumEntries(accessor);
         } catch (final RocksDBException e) {
             throw new ProcessorStateException("Error while approximating number of entries in store " + store.name, e);
         }
@@ -253,11 +248,6 @@ class RocksDBTransaction<S extends RocksDBStore> extends AbstractTransaction<S> 
     @Override
     public long approximateNumUncommittedBytes() {
         return accessor.approximateNumUncommittedBytes();
-    }
-
-    @Override
-    public long approximateNumUncommittedEntries() {
-        return accessor.approximateNumUncommittedEntries();
     }
 
     @Override

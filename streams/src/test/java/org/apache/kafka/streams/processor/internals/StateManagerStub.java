@@ -76,11 +76,6 @@ public class StateManagerStub implements StateManager {
     }
 
     @Override
-    public long approximateNumUncommittedEntries() {
-        return 0;
-    }
-
-    @Override
     public long approximateNumUncommittedBytes() {
         return 0;
     }

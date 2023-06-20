@@ -101,12 +101,12 @@ public class TransactionalKeyValueStoreTest {
     @Test
     public void shouldResetTransactionOnFlush() {
         store.put(KEY_1_BYTES, VALUE_ABC_BYTES);
-        assertThat(store.approximateNumUncommittedEntries(), is(1L));
+        assertThat(store.approximateNumEntries(), is(1L));
         assertThat(store.approximateNumUncommittedBytes(), is((long) KEY_1_BYTES.get().length + VALUE_ABC_BYTES.length));
         store.flush();
         assertThat(store.currentTransaction.isOpen(), is(true));
         assertThat(store.approximateNumUncommittedBytes(), is(0L));
-        assertThat(store.approximateNumUncommittedEntries(), is(0L));
+        assertThat(store.approximateNumEntries(), is(1L));
     }
 
     @Test

@@ -640,8 +640,7 @@ public class RocksDBStore
         void put(final ColumnFamilyHandle columnFamily, final byte[] key, final byte[] value) throws RocksDBException;
         void delete(final ColumnFamilyHandle columnFamily, final byte[] key) throws RocksDBException;
         void deleteRange(final ColumnFamilyHandle columnFamily, final byte[] from, final byte[] to) throws RocksDBException;
-        long approximateNumCommittedEntries(final ColumnFamilyHandle columnFamily) throws RocksDBException;
-        long approximateNumUncommittedEntries();
+        long approximateNumEntries(final ColumnFamilyHandle columnFamily) throws RocksDBException;
         long approximateNumUncommittedBytes();
     }
 
@@ -679,13 +678,8 @@ public class RocksDBStore
         }
 
         @Override
-        public long approximateNumCommittedEntries(final ColumnFamilyHandle columnFamily) throws RocksDBException {
+        public long approximateNumEntries(final ColumnFamilyHandle columnFamily) throws RocksDBException {
             return db.getLongProperty(columnFamily, "rocksdb.estimate-num-keys");
-        }
-
-        @Override
-        public long approximateNumUncommittedEntries() {
-            return 0;
         }
 
         @Override
@@ -829,7 +823,7 @@ public class RocksDBStore
 
         @Override
         public long approximateNumEntries(final DBAccessor accessor) throws RocksDBException {
-            return accessor.approximateNumCommittedEntries(columnFamily);
+            return accessor.approximateNumEntries(columnFamily);
         }
 
         @Override

@@ -257,7 +257,6 @@ public class KafkaStreamsTest {
                 anyInt(),
                 any(Runnable.class),
                 any(),
-                anyLong(),
                 anyLong()
         )).thenReturn(streamThreadOne).thenReturn(streamThreadTwo);
 

@@ -271,7 +271,6 @@ public class StreamThreadTest {
             threadIdx,
             null,
             HANDLER,
-            -1L,
             -1L
         );
     }
@@ -548,7 +547,6 @@ public class StreamThreadTest {
             threadIdx,
             null,
             null,
-            -1L,
             -1L
         );
 
@@ -610,7 +608,6 @@ public class StreamThreadTest {
             threadIdx,
             null,
             null,
-            -1L,
             -1L
         );
 
@@ -844,7 +841,6 @@ public class StreamThreadTest {
             null,
             null,
             null,
-            -1L,
             -1L
         ) {
             @Override
@@ -950,7 +946,6 @@ public class StreamThreadTest {
             null,
             null,
             null,
-            -1L,
             -1L
         ) {
             @Override
@@ -1681,7 +1676,6 @@ public class StreamThreadTest {
             threadIdx,
             null,
             HANDLER,
-            -1L,
             -1L
         );
 

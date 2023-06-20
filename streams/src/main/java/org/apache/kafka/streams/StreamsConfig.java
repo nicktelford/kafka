@@ -495,9 +495,6 @@ public class StreamsConfig extends AbstractConfig {
             "If this limit is exceeded, a task commit will be requested. No limit: -1. " +
             "Note: if this is too high or unbounded, it's possible for RocksDB to trigger out-of-memory errors.";
 
-    public static final String STATESTORE_UNCOMMITTED_MAX_RECORDS_CONFIG = "statestore.uncommitted.max.records";
-    public static final String STATESTORE_UNCOMMITTED_MAX_RECORDS_DOC = "Maximum number of memory bytes to be used to buffer uncommitted state-store records per-thread. ";
-
     /** {@code client.id} */
     @SuppressWarnings("WeakerAccess")
     public static final String CLIENT_ID_CONFIG = CommonClientConfigs.CLIENT_ID_CONFIG;
@@ -832,12 +829,6 @@ public class StreamsConfig extends AbstractConfig {
                     atLeast(-1),
                     Importance.MEDIUM,
                     STATESTORE_UNCOMMITTED_MAX_BYTES_DOC)
-            .define(STATESTORE_UNCOMMITTED_MAX_RECORDS_CONFIG,
-                    Type.LONG,
-                    -1L,
-                    atLeast(-1),
-                    Importance.MEDIUM,
-                    STATESTORE_UNCOMMITTED_MAX_RECORDS_DOC)
             .define(CLIENT_ID_CONFIG,
                     Type.STRING,
                     "",

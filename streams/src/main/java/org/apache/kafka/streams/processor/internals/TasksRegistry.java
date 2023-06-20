@@ -92,12 +92,6 @@ public interface TasksRegistry {
     boolean contains(final TaskId taskId);
 
     /**
-     * @return The approximate number of records not yet committed to state stores managed by this
-     *         StateManager.
-     */
-    long approximateUncommittedStateEntries();
-
-    /**
      * @return The approximate total size of all records not yet committed to state stores managed
      *         by this StateManager.
      */

@@ -720,13 +720,6 @@ public class ProcessorStateManager implements StateManager {
     }
 
     @Override
-    public long approximateNumUncommittedEntries() {
-        return stores.values().stream()
-                .map(metadata -> metadata.store().approximateNumUncommittedEntries())
-                .reduce(0L, Long::sum);
-    }
-
-    @Override
     public long approximateNumUncommittedBytes() {
         return stores.values().stream()
                 .map(metadata -> metadata.store().approximateNumUncommittedBytes())

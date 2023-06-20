@@ -445,11 +445,4 @@ public class GlobalStateManagerImpl implements GlobalStateManager {
             .map(optional -> optional.map(StateStore::approximateNumUncommittedBytes).orElse(0L))
             .reduce(0L, Long::sum);
     }
-
-    @Override
-    public long approximateNumUncommittedEntries() {
-        return globalStores.values().stream()
-            .map(optional -> optional.map(StateStore::approximateNumUncommittedEntries).orElse(0L))
-            .reduce(0L, Long::sum);
-    }
 }

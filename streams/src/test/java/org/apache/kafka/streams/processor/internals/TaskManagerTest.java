@@ -234,7 +234,6 @@ public class TaskManagerTest {
             adminClient,
             stateDirectory,
             stateUpdaterEnabled ? stateUpdater : null,
-            -1L,
             -1L
         );
         taskManager.setMainConsumer(consumer);

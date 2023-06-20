@@ -242,8 +242,8 @@ public class RocksDBTimestampedStore extends RocksDBStore implements Timestamped
 
         @Override
         public long approximateNumEntries(final DBAccessor accessor) throws RocksDBException {
-            return accessor.approximateNumCommittedEntries(oldColumnFamily) +
-                    accessor.approximateNumCommittedEntries(newColumnFamily);
+            return accessor.approximateNumEntries(oldColumnFamily) +
+                    accessor.approximateNumEntries(newColumnFamily);
         }
 
         @Override

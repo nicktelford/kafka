@@ -91,13 +91,6 @@ public abstract class AbstractTransactionalStore implements StateStore {
                 .reduce(0L, Long::sum);
     }
 
-    @Override
-    public long approximateNumUncommittedEntries() {
-        return openTransactions.stream()
-                .map(Transaction::approximateNumUncommittedEntries)
-                .reduce(0L, Long::sum);
-    }
-
     int openTransactions() {
         return openTransactions.size();
     }

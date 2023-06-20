@@ -189,23 +189,6 @@ public interface StateStore {
     }
 
     /**
-     * Return an approximate count of records not yet committed to this StateStore.
-     * <p>
-     * This method will return an approximation of the number of records that would be committed by the next call to
-     * {@link #flush()}.
-     * <p>
-     * If this StateStore is unable to approximately count uncommitted records, it will return {@code -1}.
-     * If this StateStore does not support atomic transactions, it will return {@code 0}, because records will always
-     * be immediately written to a non-transactional store, so there will be none awaiting a {@link #flush()}.
-     *
-     * @return The approximate number of records awaiting {@link #flush()}, {@code -1} if the number of
-     *         uncommitted records can't be counted, or {@code 0} if this StateStore does not support transactions.
-     */
-    default long approximateNumUncommittedEntries() {
-        return 0;
-    }
-
-    /**
      * Return an approximate count of memory used by records not yet committed to this StateStore.
      * <p>
      * This method will return an approximation of the memory would be freed by the next call to {@link #flush()}.

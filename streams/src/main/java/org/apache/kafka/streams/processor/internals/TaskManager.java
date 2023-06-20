@@ -98,7 +98,6 @@ public class TaskManager {
     private final StandbyTaskCreator standbyTaskCreator;
     private final StateUpdater stateUpdater;
 
-    private final long maxUncommittedStateRecords;
     private final long maxUncommittedStateBytes;
 
     TaskManager(final Time time,
@@ -112,8 +111,7 @@ public class TaskManager {
                 final Admin adminClient,
                 final StateDirectory stateDirectory,
                 final StateUpdater stateUpdater,
-                final long maxUncommittedStateBytes,
-                final long maxUncommittedStateRecords) {
+                final long maxUncommittedStateBytes) {
         this.time = time;
         this.processId = processId;
         this.logPrefix = logPrefix;
@@ -137,7 +135,6 @@ public class TaskManager {
             logContext
         );
 
-        this.maxUncommittedStateRecords = maxUncommittedStateRecords;
         this.maxUncommittedStateBytes = maxUncommittedStateBytes;
     }
 
@@ -1648,22 +1645,17 @@ public class TaskManager {
         }
     }
 
-    private long lastUncommittedEntries = 0L;
     private long lastUncommittedBytes = 0L;
 
     boolean needsCommit() {
         // force an early commit if the uncommitted entries/bytes exceeds or is *likely to exceed* the configured threshold
-        final long uncommittedEntries = tasks.approximateUncommittedStateEntries();
         final long uncommittedBytes = tasks.approximateUncommittedStateBytes();
 
-        final long deltaEntries = Math.min(uncommittedEntries, Math.max(uncommittedEntries, uncommittedEntries - lastUncommittedEntries));
         final long deltaBytes = Math.min(uncommittedBytes, Math.max(uncommittedBytes, uncommittedBytes - lastUncommittedBytes));
 
-        lastUncommittedEntries = uncommittedEntries;
         lastUncommittedBytes = uncommittedBytes;
 
-        return (maxUncommittedStateRecords > -1 && uncommittedEntries + deltaEntries > maxUncommittedStateRecords)
-                || (maxUncommittedStateBytes > -1 && uncommittedBytes + deltaBytes > maxUncommittedStateBytes);
+        return maxUncommittedStateBytes > -1 && uncommittedBytes + deltaBytes > maxUncommittedStateBytes;
     }
 
     /**
@@ -1679,7 +1671,6 @@ public class TaskManager {
         final Map<Task, Map<TopicPartition, OffsetAndMetadata>> consumedOffsetsAndMetadataPerTask = new HashMap<>();
         try {
             committed = commitTasksAndMaybeUpdateCommittableOffsets(tasksToCommit, consumedOffsetsAndMetadataPerTask);
-            lastUncommittedEntries = 0L;
             lastUncommittedBytes = 0L;
         } catch (final TimeoutException timeoutException) {
             consumedOffsetsAndMetadataPerTask

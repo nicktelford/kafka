@@ -376,11 +376,4 @@ class Tasks implements TasksRegistry {
                 .map(task -> task.stateManager().approximateNumUncommittedBytes())
                 .reduce(0L, Long::sum);
     }
-
-    @Override
-    public long approximateUncommittedStateEntries() {
-        return activeTasksPerId.values().stream()
-                .map(task -> task.stateManager().approximateNumUncommittedEntries())
-                .reduce(0L, Long::sum);
-    }
 }
