@@ -27,7 +27,6 @@ import org.apache.kafka.streams.query.PositionBound;
 import org.apache.kafka.streams.query.Query;
 import org.apache.kafka.streams.query.QueryConfig;
 import org.apache.kafka.streams.query.QueryResult;
-import org.apache.kafka.streams.state.Transaction;
 
 /**
  * A storage engine for managing state maintained by a stream processor.
@@ -102,20 +101,20 @@ public interface StateStore {
     }
 
     /**
-     * Creates a new {@link Transaction} for reading/writing to this state store.
+     * Creates a new transaction for reading/writing to this state store.
      * <p>
      * State stores that do not support transactions will return {@code this} instead, which should be considered a
      * transaction that doesn't provide any isolation or atomicity guarantees.
      * <p>
-     * {@link Transaction Transactions} are <em>not thread-safe</em>, and should not be shared among threads. New
-     * threads should use this method to create a new transaction, instead of sharing an existing one.
+     * Transactions are <em>not thread-safe</em>, and should not be shared among threads. New threads should use this
+     * method to create a new transaction, instead of sharing an existing one.
      * <p>
      * Transactions created by this method will have the same {@link IsolationLevel} as the {@link StateStoreContext}
      * that this store was {@link #init(StateStoreContext, StateStore) initialized with}.
      *
-     * @return A new {@link Transaction} to control reads/writes to this {@link StateStore}. The Transaction
-     *         <em>MUST</em> be {@link Transaction#flush() committed} or {@link Transaction#close() closed} when you
-     *         are finished with it, to prevent resource leaks.
+     * @return A new transaction to control reads/writes to this {@link StateStore}. The transaction <em>MUST</em> be
+     *         {@link StateStore#flush() committed} or {@link StateStore#close() closed} when you are finished with it,
+     *         to prevent resource leaks.
      */
     default StateStore newTransaction() {
         return this;

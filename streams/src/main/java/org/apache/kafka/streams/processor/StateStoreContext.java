@@ -24,7 +24,6 @@ import org.apache.kafka.streams.StreamsMetrics;
 import org.apache.kafka.streams.errors.StreamsException;
 import org.apache.kafka.streams.internals.StreamsConfigUtils;
 import org.apache.kafka.streams.processor.api.RecordMetadata;
-import org.apache.kafka.streams.state.Transaction;
 
 import java.io.File;
 import java.util.Map;
@@ -149,8 +148,7 @@ public interface StateStoreContext {
     Map<String, Object> appConfigsWithPrefix(final String prefix);
 
     /**
-     * Returns the {@link IsolationLevel} that every {@link Transaction} created by {@link StateStore#newTransaction()}
-     * should use.
+     * Returns the {@link IsolationLevel} that every transaction created by {@link StateStore#newTransaction()} should use.
      * <p>
      * The default implementation of this method will use {@link IsolationLevel#READ_COMMITTED READ_COMMITTED} if the
      * app is {@link #appConfigs() configured} to use an {@link StreamsConfig#EXACTLY_ONCE_V2 exactly-once} {@link

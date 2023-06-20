@@ -16,7 +16,6 @@
  */
 package org.apache.kafka.streams.state;
 
-import org.apache.kafka.common.IsolationLevel;
 import org.apache.kafka.streams.errors.InvalidStateStoreException;
 import org.apache.kafka.streams.errors.StreamsException;
 import org.apache.kafka.streams.processor.ProcessorContext;
@@ -27,8 +26,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Base implementation for {@link Transaction transactions} managed by an implementation of {@link
- * AbstractTransactionalStore}.
+ * Base implementation for transactions managed by an implementation of {@link AbstractTransactionalStore}.
  * <p>
  * This base implementation facilitates the automatic tracking and resource management of transactions created by {@link
  * AbstractTransactionalStore}.
@@ -39,7 +37,7 @@ import java.util.List;
  *
  * @param <S> The type of the {@link StateStore} that spawned this transaction.
  */
-public abstract class AbstractTransaction<S extends StateStore> implements Transaction {
+public abstract class AbstractTransaction<S extends StateStore> implements StateStore, AutoCloseable {
 
     protected final List<Runnable> onCloseListeners = new ArrayList<>();
 
@@ -52,12 +50,12 @@ public abstract class AbstractTransaction<S extends StateStore> implements Trans
     public abstract void closeTransaction();
 
     /**
-     * Add a function that is run after this {@link Transaction} is closed.
+     * Add a function that is run after this transaction is closed.
      * <p>
      * These listeners will be run even if the {@link #commitTransaction()} or {@link #closeTransaction()} methods throw
      * an exception.
      *
-     * @param listener A function to run after this Transaction has been closed.
+     * @param listener A function to run after this transaction has been closed.
      */
     void addOnCloseListener(final Runnable listener) {
         onCloseListeners.add(listener);
@@ -89,14 +87,9 @@ public abstract class AbstractTransaction<S extends StateStore> implements Trans
             this.store = (S) root;
         } catch (final ClassCastException e) {
             throw new StreamsException(getClass().getSimpleName() +
-                    "#init was called with a StateStore that is not of the type supported by this Transaction. " +
-                    "The caller should provide the StateStore that constructed this Transaction.");
+                    "#init was called with a StateStore that is not of the type supported by this transaction. " +
+                    "The caller should provide the StateStore that constructed this transaction.");
         }
-    }
-
-    @Override
-    public IsolationLevel isolationLevel() {
-        return context.isolationLevel();
     }
 
     @Override

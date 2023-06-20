@@ -70,7 +70,7 @@ public abstract class AbstractTransactionTest {
 
     @Test
     public void shouldHaveSameIsolationLevelAsContext() {
-        assertThat(transaction.isolationLevel(), is(equalTo(context.isolationLevel())));
+        assertThat(transaction.context.isolationLevel(), is(equalTo(context.isolationLevel())));
     }
 
     @Test

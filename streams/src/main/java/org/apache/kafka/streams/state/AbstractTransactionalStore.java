@@ -30,17 +30,16 @@ import java.util.Set;
  * <p>
  * Transactions created using {@link #newTransaction()} will be automatically tracked and closed when this store is
  * closed.
- *
- * @see Transaction
  */
 public abstract class AbstractTransactionalStore implements StateStore {
 
     protected StateStoreContext context;
 
-    private final Set<Transaction> openTransactions = Collections.synchronizedSet(new HashSet<>());
+    private final Set<AbstractTransaction<? extends AbstractTransactionalStore>> openTransactions =
+            Collections.synchronizedSet(new HashSet<>());
 
     /**
-     * @return A new {@link Transaction}.
+     * @return A new transaction.
      */
     public abstract AbstractTransaction<? extends AbstractTransactionalStore> createTransaction();
 
@@ -56,8 +55,7 @@ public abstract class AbstractTransactionalStore implements StateStore {
         }
     }
 
-    public void init(final StateStoreContext context,
-                     final StateStore root) {
+    public void init(final StateStoreContext context, final StateStore root) {
         this.context = context;
     }
 
@@ -67,10 +65,10 @@ public abstract class AbstractTransactionalStore implements StateStore {
     }
 
     /**
-     * Creates a new Transaction and registers it to be automatically closed (if still open) when this state store is
+     * Creates a new transaction and registers it to be automatically closed (if still open) when this state store is
      * closed.
      *
-     * @return A new {@link Transaction}; or {@code this}, if no new transaction is necessary to satisfy the store's
+     * @return A new transaction; or {@code this}, if no new transaction is necessary to satisfy the store's
      *         {@link org.apache.kafka.common.IsolationLevel}, or if this store does not support transactions.
      */
     @Override
@@ -87,7 +85,7 @@ public abstract class AbstractTransactionalStore implements StateStore {
     @Override
     public long approximateNumUncommittedBytes() {
         return openTransactions.stream()
-                .map(Transaction::approximateNumUncommittedBytes)
+                .map(AbstractTransaction::approximateNumUncommittedBytes)
                 .reduce(0L, Long::sum);
     }
 
@@ -95,19 +93,20 @@ public abstract class AbstractTransactionalStore implements StateStore {
         return openTransactions.size();
     }
 
-    protected StateStore register(final AbstractTransaction<? extends AbstractTransactionalStore> transaction) {
+    protected AbstractTransaction<? extends AbstractTransactionalStore> register(
+            final AbstractTransaction<? extends AbstractTransactionalStore> transaction) {
         transaction.addOnCloseListener(() -> openTransactions.remove(transaction));
         openTransactions.add(transaction);
         return transaction;
     }
 
     protected void closeOpenTransactions() {
-        final HashSet<Transaction> transactions;
+        final HashSet<AbstractTransaction<? extends AbstractTransactionalStore>> transactions;
         synchronized (openTransactions) {
             transactions = new HashSet<>(openTransactions);
         }
         if (!transactions.isEmpty()) {
-            for (final Transaction transaction : transactions) {
+            for (final AbstractTransaction<? extends AbstractTransactionalStore> transaction : transactions) {
                 transaction.close();
             }
         }
