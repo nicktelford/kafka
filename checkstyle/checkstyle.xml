@@ -129,11 +129,11 @@
 
     <module name="ClassFanOutComplexity">
       <!-- default is 20 -->
-      <property name="max" value="55"/>
+      <property name="max" value="60"/>
     </module>
     <module name="CyclomaticComplexity">
       <!-- default is 10-->
-      <property name="max" value="16"/>
+      <property name="max" value="20"/>
     </module>
     <module name="JavaNCSS">
       <!-- default is 50 -->
@@ -141,7 +141,7 @@
     </module>
     <module name="NPathComplexity">
       <!-- default is 200 -->
-      <property name="max" value="500"/>
+      <property name="max" value="600"/>
     </module>
 
     <!-- Allows the use of the @SuppressWarnings annotation in the code -->

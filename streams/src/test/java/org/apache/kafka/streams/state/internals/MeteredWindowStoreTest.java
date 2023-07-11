@@ -46,6 +46,7 @@ import org.junit.Before;
 import org.junit.Test;
 
 import java.time.temporal.ChronoUnit;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -382,11 +383,11 @@ public class MeteredWindowStoreTest {
 
     @Test
     public void shouldRecordFlushLatency() {
-        innerStoreMock.flush();
+        innerStoreMock.commit(Collections.emptyMap());
         replay(innerStoreMock);
 
         store.init((StateStoreContext) context, store);
-        store.flush();
+        store.commit(Collections.emptyMap());
 
         // it suffices to verify one flush metric since all flush metrics are recorded by the same sensor
         // and the sensor is tested elsewhere

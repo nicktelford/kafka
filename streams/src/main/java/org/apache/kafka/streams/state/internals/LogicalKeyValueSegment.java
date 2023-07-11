@@ -23,10 +23,13 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.BytesSerializer;
 import org.apache.kafka.common.utils.Bytes;
 import org.apache.kafka.streams.KeyValue;
@@ -138,8 +141,18 @@ class LogicalKeyValueSegment implements Comparable<LogicalKeyValueSegment>, Segm
     }
 
     @Override
-    public void flush() {
-        throw new UnsupportedOperationException("nothing to flush for logical segment");
+    public void commit(final Map<TopicPartition, Long> changelogOffsets) {
+        throw new UnsupportedOperationException("nothing to commit for logical segment");
+    }
+
+    @Override
+    public Long getCommittedOffset(final TopicPartition partition) {
+        return physicalStore.getCommittedOffset(partition);
+    }
+
+    @Override
+    public boolean managesOffsets() {
+        return physicalStore.managesOffsets();
     }
 
     @Override

@@ -31,6 +31,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -233,9 +234,9 @@ public class MeteredVersionedKeyValueStoreTest {
 
     @Test
     public void shouldDelegateAndRecordMetricsOnFlush() {
-        store.flush();
+        store.commit(Collections.emptyMap());
 
-        verify(inner).flush();
+        verify(inner).commit(Collections.emptyMap());
         assertThat((Double) getMetric("flush-rate").metricValue(), greaterThan(0.0));
     }
 
