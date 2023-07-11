@@ -18,6 +18,7 @@ package org.apache.kafka.streams.state.internals;
 
 import java.util.Optional;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.metrics.Sensor;
 import org.apache.kafka.common.utils.Bytes;
 import org.apache.kafka.streams.KeyValue;
@@ -283,8 +284,24 @@ public abstract class AbstractDualSchemaRocksDBSegmentedBytesStore<S extends Seg
     }
 
     @Override
-    public void flush() {
-        segments.flush();
+    public void commit(final Map<TopicPartition, Long> changelogOffsets) {
+        segments.commit(changelogOffsets);
+    }
+
+    @Override
+    public Long getCommittedOffset(final TopicPartition partition) {
+        for (final Segment segment : segments.allSegments(false)) {
+            final Long offset = segment.getCommittedOffset(partition);
+            if (offset != null) {
+                return offset;
+            }
+        }
+        return null;
+    }
+
+    @Override
+    public boolean managesOffsets() {
+        return true;
     }
 
     @Override

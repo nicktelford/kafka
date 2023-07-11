@@ -23,8 +23,10 @@ import java.io.File;
 import java.nio.ByteBuffer;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.metrics.Sensor;
 import org.apache.kafka.common.utils.Bytes;
 import org.apache.kafka.streams.KeyValue;
@@ -259,10 +261,20 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
     }
 
     @Override
-    public void flush() {
-        segmentStores.flush();
+    public void commit(final Map<TopicPartition, Long> changelogOffsets) {
+        segmentStores.commit(changelogOffsets);
         // flushing segments store includes flushing latest value store, since they share the
         // same physical RocksDB instance
+    }
+
+    @Override
+    public Long getCommittedOffset(final TopicPartition partition) {
+        return latestValueStore.getCommittedOffset(partition);
+    }
+
+    @Override
+    public boolean managesOffsets() {
+        return latestValueStore.managesOffsets();
     }
 
     @Override

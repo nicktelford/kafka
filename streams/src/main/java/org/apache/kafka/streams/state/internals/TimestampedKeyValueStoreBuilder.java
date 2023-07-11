@@ -16,6 +16,7 @@
  */
 package org.apache.kafka.streams.state.internals;
 
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.Serde;
 import org.apache.kafka.common.serialization.Serializer;
 import org.apache.kafka.common.utils.Bytes;
@@ -37,6 +38,7 @@ import org.apache.kafka.streams.state.TimestampedKeyValueStore;
 import org.apache.kafka.streams.state.ValueAndTimestamp;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 public class TimestampedKeyValueStoreBuilder<K, V>
@@ -175,8 +177,18 @@ public class TimestampedKeyValueStoreBuilder<K, V>
         }
 
         @Override
-        public void flush() {
-            wrapped.flush();
+        public void commit(final Map<TopicPartition, Long> changelogOffsets) {
+            wrapped.commit(changelogOffsets);
+        }
+
+        @Override
+        public Long getCommittedOffset(final TopicPartition partition) {
+            return wrapped.getCommittedOffset(partition);
+        }
+
+        @Override
+        public boolean managesOffsets() {
+            return wrapped.managesOffsets();
         }
 
         @Override

@@ -18,8 +18,12 @@ package org.apache.kafka.streams.state.internals;
 
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.common.IsolationLevel;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.metrics.Sensor.RecordingLevel;
+import org.apache.kafka.common.serialization.LongDeserializer;
+import org.apache.kafka.common.serialization.LongSerializer;
 import org.apache.kafka.common.serialization.Serializer;
+import org.apache.kafka.common.serialization.StringSerializer;
 import org.apache.kafka.common.utils.Bytes;
 import org.apache.kafka.common.utils.Utils;
 import org.apache.kafka.streams.KeyValue;
@@ -69,8 +73,11 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
@@ -78,6 +85,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import static org.apache.kafka.streams.StreamsConfig.InternalConfig.IQ_CONSISTENCY_OFFSET_VECTOR_ENABLED;
 import static org.apache.kafka.streams.StreamsConfig.METRICS_RECORDING_LEVEL_CONFIG;
@@ -95,6 +103,12 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
     private static final long BLOCK_CACHE_SIZE = 50 * 1024 * 1024L;
     private static final long BLOCK_SIZE = 4096L;
     private static final int MAX_WRITE_BUFFERS = 3;
+
+    protected static final byte[] OFFSETS_COLUMN_FAMILY_NAME = "__offsets".getBytes(StandardCharsets.UTF_8);
+    private static final StringSerializer TOPIC_SERIALIZER = new StringSerializer();
+    private static final LongSerializer OFFSET_SERIALIZER = new LongSerializer();
+    private static final LongDeserializer OFFSET_DESERIALIZER = new LongDeserializer();
+
     static final String DB_FILE_DIR = "rocksdb";
 
     protected StateStoreContext context;
@@ -107,6 +121,7 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
     protected File dbDir;
     RocksDB db;
     DBAccessor accessor;
+    ColumnFamilyHandle offsetsCF;
     ColumnFamilyAccessor cf;
 
     // the following option objects will be created in openDB and closed in the close() method
@@ -238,6 +253,9 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
             configSetter.setConfig(name, userSpecifiedOptions, configs);
         }
 
+        // always enable atomic flush, to guarantee atomicity of data and offsets
+        userSpecifiedOptions.setAtomicFlush(true);
+
         dbDir = new File(new File(stateDir, parentDir), name);
         try {
             Files.createDirectories(dbDir.getParentFile().toPath());
@@ -249,7 +267,8 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
         // Setup statistics before the database is opened, otherwise the statistics are not updated
         // with the measurements from Rocks DB
         setupStatistics(configs, dbOptions);
-        openRocksDB(dbOptions, columnFamilyOptions);
+        // todo: provide separate offsetsColumnFamilyOptions that's optimized for offset storage
+        openRocksDB(dbOptions, columnFamilyOptions, columnFamilyOptions);
         open = true;
 
         addValueProvidersToMetricsRecorder();
@@ -284,23 +303,71 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
     }
 
     void openRocksDB(final DBOptions dbOptions,
-                     final ColumnFamilyOptions columnFamilyOptions) {
-        final List<ColumnFamilyDescriptor> columnFamilyDescriptors
-                = Collections.singletonList(new ColumnFamilyDescriptor(RocksDB.DEFAULT_COLUMN_FAMILY, columnFamilyOptions));
-        final List<ColumnFamilyHandle> columnFamilies = new ArrayList<>(columnFamilyDescriptors.size());
+                     final ColumnFamilyOptions columnFamilyOptions,
+                     final ColumnFamilyOptions offsetsColumnFamilyOptions) {
+        final List<ColumnFamilyHandle> columnFamilies = openRocksDB(
+                dbOptions,
+                new ColumnFamilyDescriptor(RocksDB.DEFAULT_COLUMN_FAMILY, columnFamilyOptions),
+                new ColumnFamilyDescriptor(OFFSETS_COLUMN_FAMILY_NAME, offsetsColumnFamilyOptions)
+        );
+
+        cf = new SingleColumnFamilyAccessor(columnFamilies.get(0));
+        if (context.isolationLevel() == IsolationLevel.READ_COMMITTED) {
+            accessor = new BatchedDBAccessor(db, columnFamilies.get(1), rOptions, wOptions, false);
+        } else {
+            accessor = new DirectDBAccessor(db, columnFamilies.get(1), wOptions);
+        }
+        offsetsCF = columnFamilies.get(1);
+    }
+
+    List<ColumnFamilyHandle> openRocksDB(final DBOptions dbOptions,
+                                         final ColumnFamilyDescriptor defaultColumnFamilyDescriptor,
+                                         final ColumnFamilyDescriptor... columnFamilyDescriptors) {
+        final String absolutePath = dbDir.getAbsolutePath();
+        final List<ColumnFamilyDescriptor> extraDescriptors = Arrays.asList(columnFamilyDescriptors);
+        final List<ColumnFamilyDescriptor> allDescriptors = new ArrayList<>(1 + columnFamilyDescriptors.length);
+        allDescriptors.add(defaultColumnFamilyDescriptor);
+        allDescriptors.addAll(extraDescriptors);
+        final List<ColumnFamilyHandle> columnFamilies = new ArrayList<>(allDescriptors.size());
 
         try {
-            db = RocksDB.open(dbOptions, dbDir.getAbsolutePath(), columnFamilyDescriptors, columnFamilies);
-            if (context.isolationLevel() == IsolationLevel.READ_COMMITTED) {
-                accessor = new BatchedDBAccessor(db, rOptions, wOptions, false);
-            } else {
-                accessor = new DirectDBAccessor(db);
-            }
-            cf = new SingleColumnFamilyAccessor(columnFamilies.get(0));
+            db = RocksDB.open(dbOptions, absolutePath, allDescriptors, columnFamilies);
+            return columnFamilies;
         } catch (final RocksDBException e) {
-            throw new ProcessorStateException("Error opening store " + name + " at location " + dbDir.toString(), e);
+            // automatically create missing column families
+            if (e.getMessage().startsWith("Column family not found: ")) {
+                log.info("{}; creating column family...", e.getMessage());
+                try {
+                    final Options options = new Options(dbOptions, defaultColumnFamilyDescriptor.getOptions());
+                    final List<byte[]> allExisting = RocksDB.listColumnFamilies(options, absolutePath);
+                    log.info("Existing column families: {}", allExisting.stream().map(b -> new String(b, StandardCharsets.UTF_8)).collect(Collectors.joining(", ")));
+
+                    final List<ColumnFamilyDescriptor> existingDescriptors = allDescriptors.stream().filter(descriptor ->
+                            allExisting.stream().anyMatch(existing -> Arrays.equals(existing, descriptor.getName()))
+                    ).collect(Collectors.toList());
+                    final List<ColumnFamilyDescriptor> toCreate = extraDescriptors.stream().filter(descriptor ->
+                            allExisting.stream().noneMatch(existing -> Arrays.equals(existing, descriptor.getName()))
+                    ).collect(Collectors.toList());
+                    log.info("Creating column families: {}", toCreate.stream().map(c -> new String(c.getName(), StandardCharsets.UTF_8)).collect(Collectors.joining(", ")));
+                    try (final RocksDB tmp = RocksDB.open(dbOptions, absolutePath, existingDescriptors, new ArrayList<>(existingDescriptors.size()))) {
+                        tmp.createColumnFamilies(toCreate);
+                    }
+                } catch (final RocksDBException ex) {
+                    throw new ProcessorStateException("Failed to create missing column families in store " + name, ex);
+                }
+
+                try {
+                    db = RocksDB.open(dbOptions, absolutePath, allDescriptors, columnFamilies);
+                    return columnFamilies;
+                } catch (final RocksDBException ex) {
+                    throw new ProcessorStateException("Error opening store (after creating missing column families) " + name + " at location " + dbDir.toString(), ex);
+                }
+            } else {
+                throw new ProcessorStateException("Error opening store " + name + " at location " + dbDir.toString(), e);
+            }
         }
     }
+
 
     @Override
     public String name() {
@@ -574,17 +641,33 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
     }
 
     @Override
-    public synchronized void flush() {
+    public boolean managesOffsets() {
+        return true;
+    }
+
+    @Override
+    public void commit(final Map<TopicPartition, Long> changelogOffsets) {
         if (db == null) {
             return;
         }
         try {
-            accessor.commit();
-            cf.flush();
+            accessor.commit(changelogOffsets);
         } catch (final RocksDBException e) {
-            throw new ProcessorStateException("Error while executing flush from store " + name, e);
+            throw new ProcessorStateException("Error while executing commit from store " + name, e);
         } finally {
             accessor.reset();
+        }
+    }
+
+    @Override
+    public Long getCommittedOffset(final TopicPartition partition) {
+        final byte[] serializedTopic = TOPIC_SERIALIZER.serialize(null, partition.topic());
+        final ByteBuffer tp = ByteBuffer.allocate(serializedTopic.length + Integer.BYTES);
+        tp.putInt(partition.partition()).put(serializedTopic);
+        try {
+            return OFFSET_DESERIALIZER.deserialize(null, db.get(offsetsCF, tp.array()));
+        } catch (final RocksDBException e) {
+            throw new ProcessorStateException("Error while getting committed offset for partition " + partition + " from store " + name, e);
         }
     }
 
@@ -624,6 +707,7 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
 
         // Important: do not rearrange the order in which the below objects are closed!
         // Order of closing must follow: ColumnFamilyHandle > RocksDB > DBOptions > ColumnFamilyOptions
+        offsetsCF.close();
         cf.close();
         db.close();
         userSpecifiedOptions.close();
@@ -666,7 +750,8 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
         void deleteRange(final ColumnFamilyHandle columnFamily, final byte[] from, final byte[] to) throws RocksDBException;
         long approximateNumEntries(final ColumnFamilyHandle columnFamily) throws RocksDBException;
         long approximateNumUncommittedBytes();
-        void commit() throws RocksDBException;
+        void writeOffset(final TopicPartition topicPartition, final Long offset, final WriteBatchInterface batch) throws RocksDBException;
+        void commit(final Map<TopicPartition, Long> changelogOffsets) throws RocksDBException;
         void reset();
         void close();
 
@@ -676,9 +761,13 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
     static class DirectDBAccessor implements DBAccessor {
 
         private final RocksDB db;
+        private final ColumnFamilyHandle offsetsCF;
+        private final WriteOptions wOptions;
 
-        DirectDBAccessor(final RocksDB db) {
+        DirectDBAccessor(final RocksDB db, final ColumnFamilyHandle offsetsCF, final WriteOptions wOptions) {
             this.db = db;
+            this.offsetsCF = offsetsCF;
+            this.wOptions = wOptions;
         }
 
         @Override
@@ -717,8 +806,13 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
         }
 
         @Override
-        public void commit() {
-            // nothing to do, records already written
+        public void commit(final Map<TopicPartition, Long> changelogOffsets) throws RocksDBException {
+            try (final WriteBatch batch = new WriteBatch()) {
+                for (final Map.Entry<TopicPartition, Long> e : changelogOffsets.entrySet()) {
+                    writeOffset(e.getKey(), e.getValue(), batch);
+                }
+                db.write(wOptions, batch);
+            }
         }
 
         @Override
@@ -735,6 +829,20 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
         public void maybeRegisterTransactionIterator(final ManagedKeyValueIterator<Bytes, byte[]> iterator) {
             // never register iterators as transaction iterator, because we have no transaction
         }
+
+        @Override
+        public void writeOffset(final TopicPartition topicPartition, final Long offset, final WriteBatchInterface batch) throws RocksDBException {
+            final byte[] serializedTopic = TOPIC_SERIALIZER.serialize(null, topicPartition.topic());
+            final ByteBuffer tp = ByteBuffer.allocate(serializedTopic.length + Integer.BYTES);
+            tp.putInt(topicPartition.partition()).put(serializedTopic);
+
+            if (offset == null) {
+                batch.delete(offsetsCF, tp.array());
+            } else {
+                final byte[] serializedOffset = OFFSET_SERIALIZER.serialize(null, offset);
+                batch.put(offsetsCF, tp.array(), serializedOffset);
+            }
+        }
     }
 
     static class BatchedDBAccessor implements RocksDBStore.DBAccessor {
@@ -742,6 +850,7 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
         private final WriteBatchWithIndex batch = new WriteBatchWithIndex(true);
 
         private final RocksDB db;
+        private final ColumnFamilyHandle offsetsCF;
         private final ReadOptions rOptions;
         private final WriteOptions wOptions;
         private long uncommittedBytes;
@@ -751,8 +860,13 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
 
         private Set<KeyValueIterator<Bytes, byte[]>> openTransactionIterators = new HashSet<>();
 
-        BatchedDBAccessor(final RocksDB db, final ReadOptions rOptions, final WriteOptions wOptions, final boolean isStreamThreadForTest) {
+        BatchedDBAccessor(final RocksDB db,
+                          final ColumnFamilyHandle offsetsCF,
+                          final ReadOptions rOptions,
+                          final WriteOptions wOptions,
+                          final boolean isStreamThreadForTest) {
             this.db = db;
+            this.offsetsCF = offsetsCF;
             this.rOptions = rOptions;
             this.wOptions = wOptions;
             this.isStreamThreadForTest = isStreamThreadForTest;
@@ -823,7 +937,11 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
         }
 
         @Override
-        public void commit() throws RocksDBException {
+        public void commit(final Map<TopicPartition, Long> changelogOffsets) throws RocksDBException {
+            // add offsets to batch
+            for (final Map.Entry<TopicPartition, Long> e : changelogOffsets.entrySet()) {
+                writeOffset(e.getKey(), e.getValue(), batch);
+            }
             db.write(wOptions, batch);
         }
 
@@ -843,6 +961,19 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
             }
             batch.close();
             uncommittedBytes = 0;
+        }
+
+        @Override
+        public void writeOffset(final TopicPartition partition, final Long offset, final WriteBatchInterface batch) throws RocksDBException {
+            final byte[] serializedTopic = TOPIC_SERIALIZER.serialize(null, partition.topic());
+            final ByteBuffer tp = ByteBuffer.allocate(serializedTopic.length + Integer.BYTES);
+            tp.putInt(partition.partition()).put(serializedTopic);
+            if (offset == null) {
+                batch.delete(offsetsCF, tp.array());
+            } else {
+                final byte[] serializedOffset = OFFSET_SERIALIZER.serialize(null, offset);
+                batch.put(offsetsCF, tp.array(), serializedOffset);
+            }
         }
     }
 

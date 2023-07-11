@@ -16,7 +16,10 @@
  */
 package org.apache.kafka.streams.state.internals;
 
+import java.util.Map;
 import java.util.Objects;
+
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.utils.Bytes;
 import org.apache.kafka.streams.kstream.Windowed;
 import org.apache.kafka.streams.processor.StateStore;
@@ -60,8 +63,8 @@ public class RocksDBTimeOrderedWindowStore
     }
 
     @Override
-    public void flush() {
-        wrapped().flush();
+    public void commit(final Map<TopicPartition, Long> changelogOffsets) {
+        wrapped().commit(changelogOffsets);
     }
 
     @Override

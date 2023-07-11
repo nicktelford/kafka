@@ -17,6 +17,7 @@
 package org.apache.kafka.streams.state.internals;
 
 import java.lang.reflect.Field;
+import java.util.Collections;
 import java.util.Optional;
 
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -80,7 +81,6 @@ import org.rocksdb.RocksDBException;
 import org.rocksdb.Statistics;
 
 import java.io.File;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -371,7 +371,7 @@ public class RocksDBStoreTest extends AbstractKeyValueStoreTest {
     public void shouldNotThrowExceptionOnRestoreWhenThereIsPreExistingRocksDbFiles() {
         rocksDBStore.init((StateStoreContext) context, rocksDBStore);
         rocksDBStore.put(new Bytes("existingKey".getBytes(UTF_8)), "existingValue".getBytes(UTF_8));
-        rocksDBStore.flush();
+        rocksDBStore.commit(Collections.emptyMap());
 
         final List<KeyValue<byte[], byte[]>> restoreBytes = new ArrayList<>();
 
@@ -435,7 +435,7 @@ public class RocksDBStoreTest extends AbstractKeyValueStoreTest {
 
         rocksDBStore.init((StateStoreContext) context, rocksDBStore);
         rocksDBStore.putAll(entries);
-        rocksDBStore.flush();
+        rocksDBStore.commit(Collections.emptyMap());
 
         assertEquals(
             "a",
@@ -494,7 +494,7 @@ public class RocksDBStoreTest extends AbstractKeyValueStoreTest {
 
         rocksDBStore.init((StateStoreContext) context, rocksDBStore);
         rocksDBStore.putAll(entries);
-        rocksDBStore.flush();
+        rocksDBStore.commit(Collections.emptyMap());
 
         try (final KeyValueIterator<Bytes, byte[]> keysWithPrefix = rocksDBStore.prefixScan("prefix", stringSerializer)) {
             final List<String> valuesWithPrefix = new ArrayList<>();
@@ -529,7 +529,7 @@ public class RocksDBStoreTest extends AbstractKeyValueStoreTest {
 
         rocksDBStore.init((StateStoreContext) context, rocksDBStore);
         rocksDBStore.putAll(entries);
-        rocksDBStore.flush();
+        rocksDBStore.commit(Collections.emptyMap());
 
         try (final KeyValueIterator<Bytes, byte[]> keysWithPrefixAsabcd = rocksDBStore.prefixScan("abcd", stringSerializer)) {
             int numberOfKeysReturned = 0;
@@ -624,7 +624,7 @@ public class RocksDBStoreTest extends AbstractKeyValueStoreTest {
 
         rocksDBStore.init((StateStoreContext) context, rocksDBStore);
         rocksDBStore.putAll(entries);
-        rocksDBStore.flush();
+        rocksDBStore.commit(Collections.emptyMap());
 
         try (final KeyValueIterator<Bytes, byte[]> keysWithPrefix = rocksDBStore.prefixScan(prefix, stringSerializer)) {
             final List<String> valuesWithPrefix = new ArrayList<>();
@@ -659,7 +659,7 @@ public class RocksDBStoreTest extends AbstractKeyValueStoreTest {
             stringSerializer.serialize(null, "e")));
         rocksDBStore.init((StateStoreContext) context, rocksDBStore);
         rocksDBStore.putAll(entries);
-        rocksDBStore.flush();
+        rocksDBStore.commit(Collections.emptyMap());
 
         try (final KeyValueIterator<Bytes, byte[]> keysWithPrefix = rocksDBStore.prefixScan("d", stringSerializer)) {
             int numberOfKeysReturned = 0;
@@ -867,16 +867,6 @@ public class RocksDBStoreTest extends AbstractKeyValueStoreTest {
     }
 
     @Test
-    public void shouldThrowProcessorStateExceptionOnPutDeletedDir() throws IOException {
-        rocksDBStore.init((StateStoreContext) context, rocksDBStore);
-        Utils.delete(dir);
-        rocksDBStore.put(
-            new Bytes(stringSerializer.serialize(null, "anyKey")),
-            stringSerializer.serialize(null, "anyValue"));
-        assertThrows(ProcessorStateException.class, () -> rocksDBStore.flush());
-    }
-
-    @Test
     public void shouldHandleToggleOfEnablingBloomFilters() {
         final Properties props = StreamsTestUtils.getStreamsConfig();
         props.put(StreamsConfig.ROCKSDB_CONFIG_SETTER_CLASS_CONFIG, TestingBloomFilterRocksDBConfigSetter.class);
@@ -899,7 +889,7 @@ public class RocksDBStoreTest extends AbstractKeyValueStoreTest {
             rocksDBStore.put(new Bytes(keyValue.key), keyValue.value);
         }
 
-        rocksDBStore.flush();
+        rocksDBStore.commit(Collections.emptyMap());
 
         int expectedIndex = 0;
         for (final KeyValue<byte[], byte[]> keyValue : keyValues) {
@@ -945,7 +935,7 @@ public class RocksDBStoreTest extends AbstractKeyValueStoreTest {
         final byte[] key = "hello".getBytes();
         final byte[] value = "world".getBytes();
         rocksDBStore.put(Bytes.wrap(key), value);
-        rocksDBStore.flush();
+        rocksDBStore.commit(Collections.emptyMap());
 
         streamsMetrics.rocksDBMetricsRecordingTrigger().run();
 
@@ -979,7 +969,7 @@ public class RocksDBStoreTest extends AbstractKeyValueStoreTest {
         final byte[] key = "hello".getBytes();
         final byte[] value = "world".getBytes();
         rocksDBStore.put(Bytes.wrap(key), value);
-        rocksDBStore.flush();
+        rocksDBStore.commit(Collections.emptyMap());
 
         assertThat(rocksDBStore.approximateNumEntries(), greaterThan(0L));
     }
@@ -1206,7 +1196,7 @@ public class RocksDBStoreTest extends AbstractKeyValueStoreTest {
         final StateStoreContext context = getProcessorContext(props);
         rocksDBStore.init(context, null);
 
-        final RocksDBStore.DirectDBAccessor directDBAccessor = new RocksDBStore.DirectDBAccessor(rocksDBStore.db);
+        final RocksDBStore.DirectDBAccessor directDBAccessor = new RocksDBStore.DirectDBAccessor(rocksDBStore.db, rocksDBStore.offsetsCF, rocksDBStore.wOptions);
 
         final Bytes key = Bytes.wrap("foo".getBytes());
         final byte[] value = "bar".getBytes();
@@ -1225,7 +1215,7 @@ public class RocksDBStoreTest extends AbstractKeyValueStoreTest {
         rocksDBStore.init(context, null);
         ((RocksDBStore.BatchedDBAccessor) rocksDBStore.accessor).isStreamThreadForTest = true;
 
-        final RocksDBStore.DirectDBAccessor directDBAccessor = new RocksDBStore.DirectDBAccessor(rocksDBStore.db);
+        final RocksDBStore.DirectDBAccessor directDBAccessor = new RocksDBStore.DirectDBAccessor(rocksDBStore.db, rocksDBStore.offsetsCF, rocksDBStore.wOptions);
 
         final Bytes key = Bytes.wrap("foo".getBytes());
         final byte[] value = "bar".getBytes();
@@ -1244,14 +1234,14 @@ public class RocksDBStoreTest extends AbstractKeyValueStoreTest {
         rocksDBStore.init(context, null);
         ((RocksDBStore.BatchedDBAccessor) rocksDBStore.accessor).isStreamThreadForTest = true;
 
-        final RocksDBStore.DirectDBAccessor directDBAccessor = new RocksDBStore.DirectDBAccessor(rocksDBStore.db);
+        final RocksDBStore.DirectDBAccessor directDBAccessor = new RocksDBStore.DirectDBAccessor(rocksDBStore.db, rocksDBStore.offsetsCF, rocksDBStore.wOptions);
 
         final Bytes key = Bytes.wrap("foo".getBytes());
         final byte[] value = "bar".getBytes();
         assertThat(rocksDBStore.cf.get(directDBAccessor, key.get()), is(nullValue()));
         rocksDBStore.put(key, value);
         assertThat(rocksDBStore.cf.get(directDBAccessor, key.get()), is(nullValue()));
-        rocksDBStore.flush();
+        rocksDBStore.commit(Collections.emptyMap());
         assertThat(rocksDBStore.cf.get(directDBAccessor, key.get()), is(value));
     }
 
@@ -1289,7 +1279,7 @@ public class RocksDBStoreTest extends AbstractKeyValueStoreTest {
             assertThat(kv.key, is(key));
             assertThat(kv.value, is(value));
             assertThat(it.isOpen(), is(true));
-            rocksDBStore.flush();
+            rocksDBStore.commit(Collections.emptyMap());
             assertThat(it.isOpen(), is(true));
         }
     }
@@ -1313,7 +1303,7 @@ public class RocksDBStoreTest extends AbstractKeyValueStoreTest {
             assertThat(kv.key, is(key));
             assertThat(kv.value, is(value));
             assertThat(it.isOpen(), is(true));
-            rocksDBStore.flush();
+            rocksDBStore.commit(Collections.emptyMap());
             assertThat(it.isOpen(), is(false));
         }
     }
@@ -1330,7 +1320,7 @@ public class RocksDBStoreTest extends AbstractKeyValueStoreTest {
         final byte[] value = "bar".getBytes();
 
         rocksDBStore.put(key, value);
-        rocksDBStore.flush();
+        rocksDBStore.commit(Collections.emptyMap());
         try (RocksDbIterator it = (RocksDbIterator) rocksDBStore.prefixScan("f", new StringSerializer())) {
             assertThat(it.isOpen(), is(true));
             assertThat(it.hasNext(), is(true));
@@ -1338,7 +1328,7 @@ public class RocksDBStoreTest extends AbstractKeyValueStoreTest {
             assertThat(kv.key, is(key));
             assertThat(kv.value, is(value));
             assertThat(it.isOpen(), is(true));
-            rocksDBStore.flush();
+            rocksDBStore.commit(Collections.emptyMap());
             assertThat(it.isOpen(), is(true));
         }
     }

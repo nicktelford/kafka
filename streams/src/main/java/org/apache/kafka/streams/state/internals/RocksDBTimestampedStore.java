@@ -36,12 +36,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.NoSuchElementException;
 
-import static java.util.Arrays.asList;
 import static org.apache.kafka.streams.state.TimestampedBytesStore.convertToTimestampedFormat;
 
 /**
@@ -63,50 +61,34 @@ public class RocksDBTimestampedStore extends RocksDBStore implements Timestamped
 
     @Override
     void openRocksDB(final DBOptions dbOptions,
-                     final ColumnFamilyOptions columnFamilyOptions) {
-        final List<ColumnFamilyDescriptor> columnFamilyDescriptors = asList(
-            new ColumnFamilyDescriptor(RocksDB.DEFAULT_COLUMN_FAMILY, columnFamilyOptions),
-            new ColumnFamilyDescriptor("keyValueWithTimestamp".getBytes(StandardCharsets.UTF_8), columnFamilyOptions));
-        final List<ColumnFamilyHandle> columnFamilies = new ArrayList<>(columnFamilyDescriptors.size());
-
-        try {
-            db = RocksDB.open(dbOptions, dbDir.getAbsolutePath(), columnFamilyDescriptors, columnFamilies);
-            setDbAccessor(columnFamilies.get(0), columnFamilies.get(1));
-        } catch (final RocksDBException e) {
-            if ("Column family not found: keyValueWithTimestamp".equals(e.getMessage())) {
-                try {
-                    db = RocksDB.open(dbOptions, dbDir.getAbsolutePath(), columnFamilyDescriptors.subList(0, 1), columnFamilies);
-                    columnFamilies.add(db.createColumnFamily(columnFamilyDescriptors.get(1)));
-                } catch (final RocksDBException fatal) {
-                    throw new ProcessorStateException("Error opening store " + name + " at location " + dbDir.toString(), fatal);
-                }
-                setDbAccessor(columnFamilies.get(0), columnFamilies.get(1));
-            } else {
-                throw new ProcessorStateException("Error opening store " + name + " at location " + dbDir.toString(), e);
-            }
-        }
-    }
-
-    private void setDbAccessor(final ColumnFamilyHandle noTimestampColumnFamily,
-                               final ColumnFamilyHandle withTimestampColumnFamily) {
+                     final ColumnFamilyOptions columnFamilyOptions,
+                     final ColumnFamilyOptions offsetsColumnFamilyOptions) {
+        final List<ColumnFamilyHandle> columnFamilies = openRocksDB(
+                dbOptions,
+                new ColumnFamilyDescriptor(RocksDB.DEFAULT_COLUMN_FAMILY, columnFamilyOptions),
+                new ColumnFamilyDescriptor(OFFSETS_COLUMN_FAMILY_NAME, columnFamilyOptions),
+                new ColumnFamilyDescriptor("keyValueWithTimestamp".getBytes(StandardCharsets.UTF_8), columnFamilyOptions)
+        );
+        final ColumnFamilyHandle noTimestampCF = columnFamilies.get(0);
+        final ColumnFamilyHandle withTimestampCF = columnFamilies.get(2);
+        offsetsCF = columnFamilies.get(1);
         if (context.isolationLevel() == IsolationLevel.READ_COMMITTED) {
-            accessor = new BatchedDBAccessor(db, rOptions, wOptions, false);
+            accessor = new BatchedDBAccessor(db, offsetsCF, rOptions, wOptions, false);
         } else {
-            accessor = new DirectDBAccessor(db);
+            accessor = new DirectDBAccessor(db, offsetsCF, wOptions);
         }
-        final RocksIterator noTimestampsIter = db.newIterator(noTimestampColumnFamily);
+        final RocksIterator noTimestampsIter = db.newIterator(noTimestampCF);
         noTimestampsIter.seekToFirst();
         if (noTimestampsIter.isValid()) {
             log.info("Opening store {} in upgrade mode", name);
-            cf = new DualColumnFamilyAccessor(noTimestampColumnFamily, withTimestampColumnFamily);
+            cf = new DualColumnFamilyAccessor(noTimestampCF, withTimestampCF);
         } else {
             log.info("Opening store {} in regular mode", name);
-            cf = new SingleColumnFamilyAccessor(withTimestampColumnFamily);
-            noTimestampColumnFamily.close();
+            cf = new SingleColumnFamilyAccessor(withTimestampCF);
+            noTimestampCF.close();
         }
         noTimestampsIter.close();
     }
-
 
     private class DualColumnFamilyAccessor implements ColumnFamilyAccessor {
         private final ColumnFamilyHandle oldColumnFamily;

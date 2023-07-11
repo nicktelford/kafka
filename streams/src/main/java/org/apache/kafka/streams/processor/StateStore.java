@@ -16,6 +16,7 @@
  */
 package org.apache.kafka.streams.processor;
 
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.annotation.InterfaceStability.Evolving;
 import org.apache.kafka.streams.errors.StreamsException;
 import org.apache.kafka.streams.processor.api.ProcessorContext;
@@ -26,6 +27,9 @@ import org.apache.kafka.streams.query.PositionBound;
 import org.apache.kafka.streams.query.Query;
 import org.apache.kafka.streams.query.QueryConfig;
 import org.apache.kafka.streams.query.QueryResult;
+
+import java.util.Collections;
+import java.util.Map;
 
 /**
  * A storage engine for managing state maintained by a stream processor.
@@ -101,8 +105,25 @@ public interface StateStore {
 
     /**
      * Flush any cached data
+     *
+     * @deprecated Use {@link #commit(Map)} instead.
      */
-    void flush();
+    @Deprecated
+    default void flush() {
+        commit(Collections.emptyMap());
+    }
+
+    default void commit(final Map<TopicPartition, Long> changelogOffsets) {
+        flush();
+    }
+
+    default Long getCommittedOffset(final TopicPartition partition) {
+        return null;
+    }
+
+    default boolean managesOffsets() {
+        return false;
+    }
 
     /**
      * Close the storage engine.
