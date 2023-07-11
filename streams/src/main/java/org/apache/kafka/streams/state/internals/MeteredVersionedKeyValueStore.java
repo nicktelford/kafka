@@ -20,7 +20,10 @@ import static org.apache.kafka.streams.kstream.internals.WrappingNullableUtils.p
 import static org.apache.kafka.streams.kstream.internals.WrappingNullableUtils.prepareValueSerde;
 import static org.apache.kafka.streams.processor.internals.metrics.StreamsMetricsImpl.maybeMeasureLatency;
 
+import java.util.Map;
 import java.util.Objects;
+
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.Serde;
 import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.streams.errors.ProcessorStateException;
@@ -246,8 +249,8 @@ public class MeteredVersionedKeyValueStore<K, V>
     }
 
     @Override
-    public void flush() {
-        internal.flush();
+    public void commit(final Map<TopicPartition, Long> changelogOffsets) {
+        internal.commit(changelogOffsets);
     }
 
     @Override
