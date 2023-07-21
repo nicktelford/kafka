@@ -35,6 +35,7 @@ import org.apache.kafka.common.utils.Bytes;
 import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.processor.ProcessorContext;
 import org.apache.kafka.streams.processor.StateStore;
+import org.apache.kafka.streams.query.Position;
 import org.apache.kafka.streams.state.KeyValueIterator;
 import org.apache.kafka.streams.state.internals.RocksDBVersionedStore.VersionedStoreSegment;
 import org.rocksdb.RocksDBException;
@@ -239,6 +240,11 @@ class LogicalKeyValueSegment implements Comparable<LogicalKeyValueSegment>, Segm
         // no key transformations here since they should've already been done as part
         // of adding to the write batch
         physicalStore.write(batch);
+    }
+
+    @Override
+    public Position getPosition() {
+        return physicalStore.getPosition();
     }
 
     /**

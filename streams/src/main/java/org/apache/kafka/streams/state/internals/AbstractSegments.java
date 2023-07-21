@@ -19,6 +19,7 @@ package org.apache.kafka.streams.state.internals;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.streams.errors.ProcessorStateException;
 import org.apache.kafka.streams.processor.ProcessorContext;
+import org.apache.kafka.streams.query.Position;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -89,7 +90,7 @@ abstract class AbstractSegments<S extends Segment> implements Segments<S> {
     }
 
     @Override
-    public void openExisting(final ProcessorContext context, final long streamTime) {
+    public Position openExisting(final ProcessorContext context, final long streamTime) {
         try {
             final File dir = new File(context.stateDir(), name);
             if (dir.exists()) {
@@ -110,7 +111,15 @@ abstract class AbstractSegments<S extends Segment> implements Segments<S> {
             // ignore
         }
 
+        final Position position = Position.emptyPosition();
+        for (final S segment : segments.values()) {
+            if (segment.isOpen()) {
+                position.merge(segment.getPosition());
+            }
+        }
+
         cleanupExpiredSegments(streamTime);
+        return position;
     }
 
     @Override
@@ -156,7 +165,9 @@ abstract class AbstractSegments<S extends Segment> implements Segments<S> {
     @Override
     public void commit(final Map<TopicPartition, Long> changelogOffsets) {
         for (final S segment : segments.values()) {
-            segment.commit(changelogOffsets);
+            if (segment.isOpen()) {
+                segment.commit(changelogOffsets);
+            }
         }
     }
 
