@@ -17,6 +17,7 @@
 package org.apache.kafka.streams.state.internals;
 
 import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.common.IsolationLevel;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.metrics.Sensor;
 import org.apache.kafka.common.utils.Bytes;
@@ -62,7 +63,6 @@ public class AbstractRocksDBSegmentedBytesStore<S extends Segment> implements Se
     private long observedStreamTime = ConsumerRecord.NO_TIMESTAMP;
     private boolean consistencyEnabled = false;
     private Position position;
-    protected OffsetCheckpoint positionCheckpoint;
     private volatile boolean open;
 
     AbstractRocksDBSegmentedBytesStore(final String name,
@@ -266,7 +266,16 @@ public class AbstractRocksDBSegmentedBytesStore<S extends Segment> implements Se
             expiredRecordSensor.record(1.0d, context.currentSystemTimeMs());
             LOG.warn("Skipping record for expired segment.");
         } else {
-            StoreQueryUtils.updatePosition(position, stateStoreContext);
+            // update Position in current Segment - this ensures the Position is updated on-disk in each Segment store
+            if (segment instanceof RocksDBStore) {
+                // segments are always RocksDBStore instances, so this is fine
+                ((RocksDBStore) segment).updatePosition(position, stateStoreContext);
+
+                if (stateStoreContext.isolationLevel() == IsolationLevel.READ_UNCOMMITTED) {
+                    // under READ_UNCOMMITTED, we need to update our current Position with the written Position on every put
+                    position.merge(segment.getPosition());
+                }
+            }
             segment.put(key, value);
         }
     }
@@ -308,17 +317,25 @@ public class AbstractRocksDBSegmentedBytesStore<S extends Segment> implements Se
                 metrics
         );
 
-        segments.openExisting(this.context, observedStreamTime);
+        this.position = segments.openExisting(this.context, observedStreamTime);
+
+        // todo: migrate Position from .position file to latest Segment
+        // todo: also the DualSchema variant
 
         final File positionCheckpointFile = new File(context.stateDir(), name() + ".position");
-        this.positionCheckpoint = new OffsetCheckpoint(positionCheckpointFile);
-        this.position = StoreQueryUtils.readPositionFromCheckpoint(positionCheckpoint);
+
+        // migrate legacy Position data from .position file to the current Segment
+        final Segment currentSegment = segments.getSegmentForTimestamp(observedStreamTime);
+        if (currentSegment instanceof RocksDBStore) {
+            ((RocksDBStore) currentSegment).migratePositionOffsets(positionCheckpointFile, currentSegment.getPosition());
+            position.merge(currentSegment.getPosition());
+        }
 
         // register and possibly restore the state from the logs
         stateStoreContext.register(
             root,
             (RecordBatchingStateRestoreCallback) this::restoreAllInternal,
-            () -> StoreQueryUtils.checkpointPosition(positionCheckpoint, position)
+            () -> { }
         );
 
         open = true;
@@ -338,6 +355,14 @@ public class AbstractRocksDBSegmentedBytesStore<S extends Segment> implements Se
     @Override
     public void commit(final Map<TopicPartition, Long> changelogOffsets) {
         segments.commit(changelogOffsets);
+
+        // under READ_COMMITTED, we need to update our Position based on the committed Position of every Segment, on-commit
+        // this is because our Position is *not* updated on each put, as it would be under READ_UNCOMMITTED
+        if (stateStoreContext.isolationLevel() == IsolationLevel.READ_COMMITTED) {
+            for (final S segment : segments.allSegments(true)) {
+                position.merge(segment.getPosition());
+            }
+        }
     }
 
     @Override
