@@ -263,7 +263,6 @@ public class StandbyTask extends AbstractTask implements Task {
                         log,
                         logPrefix,
                         clean,
-                        eosEnabled,
                         stateMgr,
                         stateDirectory,
                         TaskType.STANDBY
