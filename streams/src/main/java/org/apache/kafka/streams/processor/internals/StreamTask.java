@@ -640,7 +640,6 @@ public class StreamTask extends AbstractTask implements ProcessorNodePunctuator,
                         log,
                         logPrefix,
                         clean,
-                        eosEnabled,
                         stateMgr,
                         stateDirectory,
                         TaskType.ACTIVE
