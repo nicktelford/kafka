@@ -313,12 +313,13 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
         );
 
         cf = new SingleColumnFamilyAccessor(columnFamilies.get(0));
-        if (context.isolationLevel() == IsolationLevel.READ_COMMITTED) {
-            accessor = new BatchedDBAccessor(db, columnFamilies.get(1), rOptions, wOptions, false);
-        } else {
-            accessor = new DirectDBAccessor(db, columnFamilies.get(1), wOptions);
-        }
         offsetsCF = columnFamilies.get(1);
+
+        if (context.isolationLevel() == IsolationLevel.READ_COMMITTED) {
+            accessor = new BatchedDBAccessor(this, false);
+        } else {
+            accessor = new DirectDBAccessor(this);
+        }
     }
 
     List<ColumnFamilyHandle> openRocksDB(final DBOptions dbOptions,
@@ -774,44 +775,40 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
 
     static class DirectDBAccessor implements DBAccessor {
 
-        private final RocksDB db;
-        private final ColumnFamilyHandle offsetsCF;
-        private final WriteOptions wOptions;
+        private final RocksDBStore store;
 
-        DirectDBAccessor(final RocksDB db, final ColumnFamilyHandle offsetsCF, final WriteOptions wOptions) {
-            this.db = db;
-            this.offsetsCF = offsetsCF;
-            this.wOptions = wOptions;
+        DirectDBAccessor(final RocksDBStore store) {
+            this.store = store;
         }
 
         @Override
         public byte[] get(final ColumnFamilyHandle columnFamily, final byte[] key) throws RocksDBException {
-            return db.get(columnFamily, key);
+            return store.db.get(columnFamily, key);
         }
 
         @Override
         public RocksIterator newIterator(final ColumnFamilyHandle columnFamily) {
-            return db.newIterator(columnFamily);
+            return store.db.newIterator(columnFamily);
         }
 
         @Override
         public void put(final ColumnFamilyHandle columnFamily, final byte[] key, final byte[] value) throws RocksDBException {
-            db.put(columnFamily, key, value);
+            store.db.put(columnFamily, key, value);
         }
 
         @Override
         public void delete(final ColumnFamilyHandle columnFamily, final byte[] key) throws RocksDBException {
-            db.delete(columnFamily, key);
+            store.db.delete(columnFamily, key);
         }
 
         @Override
         public void deleteRange(final ColumnFamilyHandle columnFamily, final byte[] from, final byte[] to) throws RocksDBException {
-            db.deleteRange(columnFamily, from, to);
+            store.db.deleteRange(columnFamily, from, to);
         }
 
         @Override
         public long approximateNumEntries(final ColumnFamilyHandle columnFamily) throws RocksDBException {
-            return db.getLongProperty(columnFamily, "rocksdb.estimate-num-keys");
+            return store.db.getLongProperty(columnFamily, "rocksdb.estimate-num-keys");
         }
 
         @Override
@@ -825,7 +822,7 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
                 for (final Map.Entry<TopicPartition, Long> e : changelogOffsets.entrySet()) {
                     writeOffset(e.getKey(), e.getValue(), batch);
                 }
-                db.write(wOptions, batch);
+                store.db.write(store.wOptions, batch);
             }
         }
 
@@ -858,12 +855,8 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
 
     static class BatchedDBAccessor implements RocksDBStore.DBAccessor {
 
+        private final RocksDBStore store;
         private final WriteBatchWithIndex batch = new WriteBatchWithIndex(true);
-
-        private final RocksDB db;
-        private final ColumnFamilyHandle offsetsCF;
-        private final ReadOptions rOptions;
-        private final WriteOptions wOptions;
         private long uncommittedBytes;
 
         // used to simulate calls from StreamThreads in tests
@@ -871,33 +864,26 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
 
         private Set<KeyValueIterator<Bytes, byte[]>> openTransactionIterators = new HashSet<>();
 
-        BatchedDBAccessor(final RocksDB db,
-                          final ColumnFamilyHandle offsetsCF,
-                          final ReadOptions rOptions,
-                          final WriteOptions wOptions,
-                          final boolean isStreamThreadForTest) {
-            this.db = db;
-            this.offsetsCF = offsetsCF;
-            this.rOptions = rOptions;
-            this.wOptions = wOptions;
+        BatchedDBAccessor(final RocksDBStore store, final boolean isStreamThreadForTest) {
+            this.store = store;
             this.isStreamThreadForTest = isStreamThreadForTest;
         }
 
         @Override
         public byte[] get(final ColumnFamilyHandle columnFamily, final byte[] key) throws RocksDBException {
             if (Thread.currentThread() instanceof StreamThread || isStreamThreadForTest) {
-                return batch.getFromBatchAndDB(db, columnFamily, rOptions, key);
+                return batch.getFromBatchAndDB(store.db, columnFamily, store.rOptions, key);
             } else {
-                return db.get(columnFamily, rOptions, key);
+                return store.db.get(columnFamily, store.rOptions, key);
             }
         }
 
         @Override
         public RocksIterator newIterator(final ColumnFamilyHandle columnFamily) {
             if (Thread.currentThread() instanceof StreamThread || isStreamThreadForTest) {
-                return batch.newIteratorWithBase(columnFamily, db.newIterator(columnFamily));
+                return batch.newIteratorWithBase(columnFamily, store.db.newIterator(columnFamily));
             } else {
-                return db.newIterator(columnFamily, rOptions);
+                return store.db.newIterator(columnFamily, store.rOptions);
             }
         }
 
@@ -932,9 +918,9 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
         @Override
         public long approximateNumEntries(final ColumnFamilyHandle columnFamily) throws RocksDBException {
             if (Thread.currentThread() instanceof StreamThread || isStreamThreadForTest) {
-                return batch.count() + db.getLongProperty(columnFamily, "rocksdb.estimate-num-keys");
+                return batch.count() + store.db.getLongProperty(columnFamily, "rocksdb.estimate-num-keys");
             } else {
-                return db.getLongProperty(columnFamily, "rocksdb.estimate-num-keys");
+                return store.db.getLongProperty(columnFamily, "rocksdb.estimate-num-keys");
             }
         }
 
@@ -953,7 +939,7 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
             for (final Map.Entry<TopicPartition, Long> e : changelogOffsets.entrySet()) {
                 writeOffset(e.getKey(), e.getValue(), batch);
             }
-            db.write(wOptions, batch);
+            store.db.write(store.wOptions, batch);
         }
 
         @Override
