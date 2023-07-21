@@ -328,43 +328,36 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
         final List<ColumnFamilyDescriptor> allDescriptors = new ArrayList<>(1 + columnFamilyDescriptors.length);
         allDescriptors.add(defaultColumnFamilyDescriptor);
         allDescriptors.addAll(extraDescriptors);
-        final List<ColumnFamilyHandle> columnFamilies = new ArrayList<>(allDescriptors.size());
 
         try {
-            db = RocksDB.open(dbOptions, absolutePath, allDescriptors, columnFamilies);
+            final Options options = new Options(dbOptions, defaultColumnFamilyDescriptor.getOptions());
+            final List<byte[]> allExisting = RocksDB.listColumnFamilies(options, absolutePath);
+
+            final List<ColumnFamilyDescriptor> existingDescriptors = allDescriptors.stream()
+                    .filter(descriptor -> descriptor == defaultColumnFamilyDescriptor || allExisting.stream().anyMatch(existing -> Arrays.equals(existing, descriptor.getName())))
+                    .collect(Collectors.toList());
+            final List<ColumnFamilyDescriptor> toCreate = extraDescriptors.stream()
+                    .filter(descriptor -> allExisting.stream().noneMatch(existing -> Arrays.equals(existing, descriptor.getName())))
+                    .collect(Collectors.toList());
+            final List<ColumnFamilyHandle> existingColumnFamilies = new ArrayList<>(existingDescriptors.size());
+            db = RocksDB.open(dbOptions, absolutePath, existingDescriptors, existingColumnFamilies);
+            final List<ColumnFamilyHandle> createdColumnFamilies = db.createColumnFamilies(toCreate);
+
+            // match up the existing and created ColumnFamilyHandles with the existing/created ColumnFamilyDescriptors
+            // so that the order of the resultant List matches the order of the openRocksDB arguments
+            final List<ColumnFamilyHandle> columnFamilies = new ArrayList<>(allDescriptors.size());
+            for (int i = 0, j = 0, k = 0; i < allDescriptors.size(); i++) {
+                if (j < existingDescriptors.size() && (existingDescriptors.get(j) == allDescriptors.get(i))) {
+                    columnFamilies.add(existingColumnFamilies.get(j));
+                    j++;
+                } else if (k < toCreate.size() && (toCreate.get(k) == allDescriptors.get(i))) {
+                    columnFamilies.add(createdColumnFamilies.get(k));
+                    k++;
+                }
+            }
             return columnFamilies;
         } catch (final RocksDBException e) {
-            // automatically create missing column families
-            if (e.getMessage().startsWith("Column family not found: ")) {
-                log.info("{}; creating column family...", e.getMessage());
-                try {
-                    final Options options = new Options(dbOptions, defaultColumnFamilyDescriptor.getOptions());
-                    final List<byte[]> allExisting = RocksDB.listColumnFamilies(options, absolutePath);
-                    log.info("Existing column families: {}", allExisting.stream().map(b -> new String(b, StandardCharsets.UTF_8)).collect(Collectors.joining(", ")));
-
-                    final List<ColumnFamilyDescriptor> existingDescriptors = allDescriptors.stream().filter(descriptor ->
-                            allExisting.stream().anyMatch(existing -> Arrays.equals(existing, descriptor.getName()))
-                    ).collect(Collectors.toList());
-                    final List<ColumnFamilyDescriptor> toCreate = extraDescriptors.stream().filter(descriptor ->
-                            allExisting.stream().noneMatch(existing -> Arrays.equals(existing, descriptor.getName()))
-                    ).collect(Collectors.toList());
-                    log.info("Creating column families: {}", toCreate.stream().map(c -> new String(c.getName(), StandardCharsets.UTF_8)).collect(Collectors.joining(", ")));
-                    try (final RocksDB tmp = RocksDB.open(dbOptions, absolutePath, existingDescriptors, new ArrayList<>(existingDescriptors.size()))) {
-                        tmp.createColumnFamilies(toCreate);
-                    }
-                } catch (final RocksDBException ex) {
-                    throw new ProcessorStateException("Failed to create missing column families in store " + name, ex);
-                }
-
-                try {
-                    db = RocksDB.open(dbOptions, absolutePath, allDescriptors, columnFamilies);
-                    return columnFamilies;
-                } catch (final RocksDBException ex) {
-                    throw new ProcessorStateException("Error opening store (after creating missing column families) " + name + " at location " + dbDir.toString(), ex);
-                }
-            } else {
-                throw new ProcessorStateException("Error opening store " + name + " at location " + dbDir.toString(), e);
-            }
+            throw new ProcessorStateException("Error opening store " + name + " at location " + dbDir.toString(), e);
         }
     }
 
