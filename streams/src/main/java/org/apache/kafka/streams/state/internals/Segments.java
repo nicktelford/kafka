@@ -18,6 +18,7 @@ package org.apache.kafka.streams.state.internals;
 
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.streams.processor.ProcessorContext;
+import org.apache.kafka.streams.query.Position;
 
 import java.util.List;
 import java.util.Map;
@@ -34,7 +35,7 @@ interface Segments<S extends Segment> {
 
     S getOrCreateSegment(final long segmentId, final ProcessorContext context);
 
-    void openExisting(final ProcessorContext context, final long streamTime);
+    Position openExisting(final ProcessorContext context, final long streamTime);
 
     List<S> segments(final long timeFrom, final long timeTo, final boolean forward);
 

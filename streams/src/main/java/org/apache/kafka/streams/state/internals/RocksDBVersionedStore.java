@@ -19,7 +19,6 @@ package org.apache.kafka.streams.state.internals;
 import static org.apache.kafka.streams.StreamsConfig.InternalConfig.IQ_CONSISTENCY_OFFSET_VECTOR_ENABLED;
 import static org.apache.kafka.streams.state.internals.RocksDBStore.DB_FILE_DIR;
 
-import java.io.File;
 import java.nio.ByteBuffer;
 import java.util.Collection;
 import java.util.List;
@@ -99,8 +98,6 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
     private Sensor expiredRecordSensor;
     private long observedStreamTime = ConsumerRecord.NO_TIMESTAMP;
     private boolean consistencyEnabled = false;
-    private Position position;
-    private OffsetCheckpoint positionCheckpoint;
     private volatile boolean open;
 
     RocksDBVersionedStore(final String name, final String metricsScope, final long historyRetention, final long segmentInterval) {
@@ -298,7 +295,7 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
 
     @Override
     public Position getPosition() {
-        return position;
+        return segmentStores.getPhysicalStore().getPosition();
     }
 
     @Deprecated
@@ -320,15 +317,11 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
 
         segmentStores.openExisting(context, observedStreamTime);
 
-        final File positionCheckpointFile = new File(context.stateDir(), name() + ".position");
-        this.positionCheckpoint = new OffsetCheckpoint(positionCheckpointFile);
-        this.position = StoreQueryUtils.readPositionFromCheckpoint(positionCheckpoint);
-
         // register and possibly restore the state from the logs
         stateStoreContext.register(
             root,
             (RecordBatchingStateRestoreCallback) RocksDBVersionedStore.this::restoreBatch,
-            () -> StoreQueryUtils.checkpointPosition(positionCheckpoint, position)
+            () -> { }
         );
 
         open = true;
@@ -358,6 +351,7 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
         }
 
         final VersionedStoreClient<?> restoreClient = restoreWriteBuffer.getClient();
+        final RocksDBStore physicalStore = segmentStores.getPhysicalStore();
 
         // note: there is increased risk for hitting an out-of-memory during this restore loop,
         // compared to for non-versioned key-value stores, because this versioned store
@@ -377,7 +371,7 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
             ChangelogRecordDeserializationHelper.applyChecksAndUpdatePosition(
                 record,
                 consistencyEnabled,
-                position
+                physicalStore.position
             );
 
             // put records to write buffer
@@ -388,6 +382,16 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
                 record.value(),
                 record.timestamp()
             );
+
+            // update Position offsets in RocksDB offsets column-family
+            // we don't have access to the WriteBatch used for the writes themselves here, so we'll have to settle
+            // for adding them in a separate batch
+            try (final WriteBatch batch = new WriteBatch()) {
+                physicalStore.writePositionOffsetsToBatch(physicalStore.position, batch);
+                physicalStore.write(batch);
+            } catch (final RocksDBException e) {
+                throw new ProcessorStateException("Error writing Position offsets to store " + name, e);
+            }
         }
 
         try {

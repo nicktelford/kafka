@@ -23,6 +23,7 @@ import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.streams.processor.ProcessorContext;
 import org.apache.kafka.streams.processor.StateStoreContext;
 import org.apache.kafka.streams.processor.internals.ProcessorContextUtils;
+import org.apache.kafka.streams.query.Position;
 import org.apache.kafka.streams.state.internals.metrics.RocksDBMetricsRecorder;
 
 /**
@@ -54,6 +55,10 @@ public class LogicalKeyValueSegments extends AbstractSegments<LogicalKeyValueSeg
         super(name, retentionPeriod, segmentInterval);
         this.metricsRecorder = metricsRecorder;
         this.physicalStore = new RocksDBStore(name, parentDir, metricsRecorder, false);
+    }
+
+    RocksDBStore getPhysicalStore() {
+        return physicalStore;
     }
 
     @Override
@@ -99,10 +104,10 @@ public class LogicalKeyValueSegments extends AbstractSegments<LogicalKeyValueSeg
     }
 
     @Override
-    public void openExisting(final ProcessorContext context, final long streamTime) {
+    public Position openExisting(final ProcessorContext context, final long streamTime) {
         metricsRecorder.init(ProcessorContextUtils.getMetricsImpl(context), context.taskId());
         physicalStore.init((StateStoreContext) context, null);
-//        physicalStore.openDB(context.appConfigs(), context.stateDir());
+        return physicalStore.getPosition();
     }
 
     @Override

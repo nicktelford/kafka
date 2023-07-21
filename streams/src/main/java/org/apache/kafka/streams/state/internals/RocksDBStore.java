@@ -33,6 +33,7 @@ import org.apache.kafka.streams.errors.ProcessorStateException;
 import org.apache.kafka.streams.processor.ProcessorContext;
 import org.apache.kafka.streams.processor.StateStore;
 import org.apache.kafka.streams.processor.StateStoreContext;
+import org.apache.kafka.streams.processor.api.RecordMetadata;
 import org.apache.kafka.streams.processor.internals.ChangelogRecordDeserializationHelper;
 import org.apache.kafka.streams.processor.internals.RecordBatchingStateRestoreCallback;
 import org.apache.kafka.streams.processor.internals.StreamThread;
@@ -105,9 +106,9 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
     private static final int MAX_WRITE_BUFFERS = 3;
 
     protected static final byte[] OFFSETS_COLUMN_FAMILY_NAME = "__offsets".getBytes(StandardCharsets.UTF_8);
-    private static final TopicPartitionSerializer TOPIC_PARTITION_SERIALIZER = new TopicPartitionSerializer();
+    static final TopicPartitionSerializer TOPIC_PARTITION_SERIALIZER = new TopicPartitionSerializer();
     private static final TopicPartitionDeserializer TOPIC_PARTITION_DESERIALIZER = new TopicPartitionDeserializer();
-    private static final LongSerializer OFFSET_SERIALIZER = new LongSerializer();
+    static final LongSerializer OFFSET_SERIALIZER = new LongSerializer();
     private static final LongDeserializer OFFSET_DESERIALIZER = new LongDeserializer();
 
     static final String DB_FILE_DIR = "rocksdb";
@@ -188,15 +189,16 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
         openDB(context.appConfigs(), context.stateDir());
 
         final File positionCheckpointFile = new File(context.stateDir(), name() + ".position");
-        final OffsetCheckpoint positionCheckpoint = new OffsetCheckpoint(positionCheckpointFile);
-        this.position = StoreQueryUtils.readPositionFromCheckpoint(positionCheckpoint);
+        this.position = loadPositionOffsetsFromDatabase();
+        migratePositionOffsets(positionCheckpointFile, position);
+        log.info("Store {} initialized with {}", name, position);
 
         // value getter should always read directly from rocksDB
         // since it is only for values that are already flushed
         context.register(
             root,
             (RecordBatchingStateRestoreCallback) this::restoreBatch,
-            () -> StoreQueryUtils.checkpointPosition(positionCheckpoint, position)
+            () -> { }
         );
         consistencyEnabled = StreamsConfig.InternalConfig.getBoolean(
             context.appConfigs(),
@@ -331,6 +333,7 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
         allDescriptors.add(defaultColumnFamilyDescriptor);
         allDescriptors.addAll(extraDescriptors);
 
+        // TODO: commit this set of changes separately to the Segment stuff
         try {
             final Options options = new Options(dbOptions, defaultColumnFamilyDescriptor.getOptions());
             final List<byte[]> allExisting = RocksDB.listColumnFamilies(options, absolutePath);
@@ -385,6 +388,73 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
         }
     }
 
+    Position loadPositionOffsetsFromDatabase() {
+        final Position position = Position.emptyPosition();
+        try (final RocksIterator it = accessor.newIterator(offsetsCF)) {
+            it.seekToFirst();
+            while (it.isValid()) {
+                final TopicPartition tp = TOPIC_PARTITION_DESERIALIZER.deserialize(null, it.key());
+                final Long offset = OFFSET_DESERIALIZER.deserialize(null, it.value());
+                position.withComponent(tp.topic(), tp.partition(), offset);
+                it.next();
+            }
+        }
+        log.info("Loaded {} from DB for store {}", position, name);
+        return position;
+    }
+
+    void writePositionOffsetsToBatch(final Position position, final WriteBatchInterface batch) {
+        try {
+            for (final String topic : position.getTopics()) {
+                for (final Map.Entry<Integer, Long> e : position.getPartitionPositions(topic).entrySet()) {
+                    final byte[] key = TOPIC_PARTITION_SERIALIZER.serialize(null, new TopicPartition(topic, e.getKey()));
+                    final byte[] value = OFFSET_SERIALIZER.serialize(null, e.getValue());
+                    batch.put(offsetsCF, key, value);
+                }
+            }
+            log.info("Written {} for store {}", position, name);
+        } catch (final RocksDBException e) {
+            throw new ProcessorStateException("Failed to write Position offsets to RocksDBStore " + name, e);
+        }
+    }
+
+    void migratePositionOffsets(final File positionCheckpointFile, final Position position) {
+        final OffsetCheckpoint positionCheckpoint = new OffsetCheckpoint(positionCheckpointFile);
+        final Position legacyPosition = StoreQueryUtils.readPositionFromCheckpoint(positionCheckpoint);
+
+        log.info("Migrating {} for store {}", legacyPosition, name);
+        position.merge(legacyPosition);
+
+        try (final WriteBatch batch = new WriteBatch()) {
+            writePositionOffsetsToBatch(position, batch);
+            write(batch);
+        } catch (final RocksDBException e) {
+            throw new ProcessorStateException("Failed to write Position offsets to RocksDBStore " + name, e);
+        }
+
+        if (positionCheckpointFile.exists()) {
+            try {
+                Files.delete(positionCheckpointFile.toPath());
+            } catch (final IOException e) {
+                log.warn("Failed to delete legacy .position file for RocksDBStore {}." +
+                        "It will be migrated every time this StateStore initializes until the file can be successfully deleted.", name, e);
+            }
+        }
+    }
+
+    void updatePosition(final Position position, final StateStoreContext context) {
+        if (position != null && context != null && context.recordMetadata().isPresent()) {
+            final RecordMetadata meta = context.recordMetadata().get();
+            if (meta.topic() != null) {
+                try {
+                    accessor.updatePosition(new TopicPartition(meta.topic(), meta.partition()), meta.offset());
+                } catch (final RocksDBException e) {
+                    throw new ProcessorStateException("Failed to update Position offsets in RocksDBStore " + name, e);
+                }
+            }
+        }
+    }
+
     @Override
     public synchronized void put(final Bytes key,
                                  final byte[] value) {
@@ -392,7 +462,7 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
         validateStoreOpen();
         cf.put(accessor, key.get(), value);
 
-        StoreQueryUtils.updatePosition(position, context);
+        updatePosition(position, context);
     }
 
     @Override
@@ -411,7 +481,7 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
         try (final WriteBatch batch = new WriteBatch()) {
             cf.prepareBatch(entries, batch);
             write(batch);
-            StoreQueryUtils.updatePosition(position, context);
+            updatePosition(position, context);
         } catch (final RocksDBException e) {
             throw new ProcessorStateException("Error while batch writing to store " + name, e);
         }
@@ -647,6 +717,7 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
         }
         try {
             accessor.commit(changelogOffsets);
+            log.info("Committed store {} with changelogOffsets {}", name, changelogOffsets);
         } catch (final RocksDBException e) {
             throw new ProcessorStateException("Error while executing commit from store " + name, e);
         } finally {
@@ -766,6 +837,7 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
         long approximateNumEntries(final ColumnFamilyHandle columnFamily) throws RocksDBException;
         long approximateNumUncommittedBytes();
         void writeOffset(final TopicPartition topicPartition, final Long offset, final WriteBatchInterface batch) throws RocksDBException;
+        void updatePosition(final TopicPartition topicPartition, final Long offset) throws RocksDBException;
         void commit(final Map<TopicPartition, Long> changelogOffsets) throws RocksDBException;
         void reset();
         void close();
@@ -851,12 +923,25 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
                 batch.put(store.offsetsCF, key, serializedOffset);
             }
         }
+
+        @Override
+        public void updatePosition(final TopicPartition topicPartition, final Long offset) throws RocksDBException {
+            final byte[] key = TOPIC_PARTITION_SERIALIZER.serialize(null, topicPartition);
+            if (offset == null) {
+                store.db.delete(store.offsetsCF, key);
+            } else {
+                final byte[] value = OFFSET_SERIALIZER.serialize(null, offset);
+                store.db.put(store.offsetsCF, key, value);
+                store.position.withComponent(topicPartition.topic(), topicPartition.partition(), offset);
+            }
+        }
     }
 
     static class BatchedDBAccessor implements RocksDBStore.DBAccessor {
 
         private final RocksDBStore store;
         private final WriteBatchWithIndex batch = new WriteBatchWithIndex(true);
+        private Position uncommittedPosition = Position.emptyPosition();
         private long uncommittedBytes;
 
         // used to simulate calls from StreamThreads in tests
@@ -940,6 +1025,10 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
                 writeOffset(e.getKey(), e.getValue(), batch);
             }
             store.db.write(store.wOptions, batch);
+
+            // merge uncommitted Positions into the committed Position data and reset uncommitted Positions
+            store.position.merge(uncommittedPosition);
+            uncommittedPosition = Position.emptyPosition();
         }
 
         @Override
@@ -969,6 +1058,12 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
                 final byte[] serializedOffset = OFFSET_SERIALIZER.serialize(null, offset);
                 batch.put(store.offsetsCF, key, serializedOffset);
             }
+        }
+
+        @Override
+        public void updatePosition(final TopicPartition topicPartition, final Long offset) throws RocksDBException {
+            writeOffset(topicPartition, offset, batch);
+            uncommittedPosition.withComponent(topicPartition.topic(), topicPartition.partition(), offset);
         }
     }
 
@@ -1143,7 +1238,9 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
                 // If version headers are not present or version is V0
                 cf.addToBatch(record.key(), record.value(), batch);
             }
+            writePositionOffsetsToBatch(position, batch);
             write(batch);
+            log.info("Got {} from restored records for store {}", position, name);
         } catch (final RocksDBException e) {
             throw new ProcessorStateException("Error restoring batch to store " + name, e);
         }

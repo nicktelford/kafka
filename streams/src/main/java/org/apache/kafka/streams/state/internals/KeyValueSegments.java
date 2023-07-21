@@ -19,6 +19,7 @@ package org.apache.kafka.streams.state.internals;
 import org.apache.kafka.streams.processor.ProcessorContext;
 import org.apache.kafka.streams.processor.StateStoreContext;
 import org.apache.kafka.streams.processor.internals.ProcessorContextUtils;
+import org.apache.kafka.streams.query.Position;
 import org.apache.kafka.streams.state.internals.metrics.RocksDBMetricsRecorder;
 
 /**
@@ -62,8 +63,8 @@ class KeyValueSegments extends AbstractSegments<KeyValueSegment> {
     }
 
     @Override
-    public void openExisting(final ProcessorContext context, final long streamTime) {
+    public Position openExisting(final ProcessorContext context, final long streamTime) {
         metricsRecorder.init(ProcessorContextUtils.getMetricsImpl(context), context.taskId());
-        super.openExisting(context, streamTime);
+        return super.openExisting(context, streamTime);
     }
 }
