@@ -111,7 +111,7 @@ public class StateManagerUtilTest {
         when(stateDirectory.lock(taskId)).thenReturn(true);
 
         StateManagerUtil.closeStateManager(logger,
-            "logPrefix:", true, false, stateManager, stateDirectory, TaskType.ACTIVE);
+            "logPrefix:", true, stateManager, stateDirectory, TaskType.ACTIVE);
 
         inOrder.verify(stateManager).close();
         inOrder.verify(stateDirectory).unlock(taskId);
@@ -126,7 +126,7 @@ public class StateManagerUtilTest {
 
         final ProcessorStateException thrown = assertThrows(
             ProcessorStateException.class, () -> StateManagerUtil.closeStateManager(logger,
-            "logPrefix:", true, false, stateManager, stateDirectory, TaskType.ACTIVE));
+            "logPrefix:", true, stateManager, stateDirectory, TaskType.ACTIVE));
 
         // Thrown stateMgr exception will not be wrapped.
         assertEquals("state manager failed to close", thrown.getMessage());
@@ -144,7 +144,7 @@ public class StateManagerUtilTest {
         assertThrows(
             ProcessorStateException.class,
             () -> StateManagerUtil.closeStateManager(
-                logger, "logPrefix:", false, false, stateManager, stateDirectory, TaskType.ACTIVE));
+                logger, "logPrefix:", false, stateManager, stateDirectory, TaskType.ACTIVE));
 
         verify(stateDirectory).unlock(taskId);
     }
@@ -156,7 +156,7 @@ public class StateManagerUtilTest {
         when(stateDirectory.lock(taskId)).thenReturn(false);
 
         StateManagerUtil.closeStateManager(
-                logger, "logPrefix:", true, false, stateManager, stateDirectory, TaskType.ACTIVE);
+                logger, "logPrefix:", true, stateManager, stateDirectory, TaskType.ACTIVE);
 
         inOrder.verify(stateManager).taskId();
         inOrder.verify(stateDirectory).lock(taskId);
@@ -169,12 +169,14 @@ public class StateManagerUtilTest {
     @Test
     public void shouldNotWipeStateStoresIfUnableToLockTaskDirectory() {
         final InOrder inOrder = inOrder(stateManager, stateDirectory);
+        when(stateManager.hasCorruptedStores()).thenReturn(true);
         when(stateManager.taskId()).thenReturn(taskId);
         when(stateDirectory.lock(taskId)).thenReturn(false);
 
         StateManagerUtil.closeStateManager(
-                logger, "logPrefix:", false, true, stateManager, stateDirectory, TaskType.ACTIVE);
+                logger, "logPrefix:", false, stateManager, stateDirectory, TaskType.ACTIVE);
 
+        inOrder.verify(stateManager).hasCorruptedStores();
         inOrder.verify(stateManager).taskId();
         inOrder.verify(stateDirectory).lock(taskId);
         verify(stateManager, never()).close();

@@ -387,6 +387,14 @@ public class ProcessorStateManager implements StateManager {
         }
     }
 
+    /**
+     * This is used to determine if the state managed by this StateManager should be wiped and rebuilt.
+     * @return {@code true} iff this StateManager has at least one "corrupt" store.
+     */
+    boolean hasCorruptedStores() {
+        return stores.values().stream().anyMatch(store -> store.corrupted);
+    }
+
     @Override
     public Map<TopicPartition, Long> changelogOffsets() {
         // return the current offsets for those logged stores
