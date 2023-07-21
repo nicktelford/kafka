@@ -20,10 +20,10 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.common.IsolationLevel;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.metrics.Sensor.RecordingLevel;
+import org.apache.kafka.common.serialization.Deserializer;
 import org.apache.kafka.common.serialization.LongDeserializer;
 import org.apache.kafka.common.serialization.LongSerializer;
 import org.apache.kafka.common.serialization.Serializer;
-import org.apache.kafka.common.serialization.StringSerializer;
 import org.apache.kafka.common.utils.Bytes;
 import org.apache.kafka.common.utils.Utils;
 import org.apache.kafka.streams.KeyValue;
@@ -105,7 +105,8 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
     private static final int MAX_WRITE_BUFFERS = 3;
 
     protected static final byte[] OFFSETS_COLUMN_FAMILY_NAME = "__offsets".getBytes(StandardCharsets.UTF_8);
-    private static final StringSerializer TOPIC_SERIALIZER = new StringSerializer();
+    private static final TopicPartitionSerializer TOPIC_PARTITION_SERIALIZER = new TopicPartitionSerializer();
+    private static final TopicPartitionDeserializer TOPIC_PARTITION_DESERIALIZER = new TopicPartitionDeserializer();
     private static final LongSerializer OFFSET_SERIALIZER = new LongSerializer();
     private static final LongDeserializer OFFSET_DESERIALIZER = new LongDeserializer();
 
@@ -654,11 +655,9 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
 
     @Override
     public Long getCommittedOffset(final TopicPartition partition) {
-        final byte[] serializedTopic = TOPIC_SERIALIZER.serialize(null, partition.topic());
-        final ByteBuffer tp = ByteBuffer.allocate(serializedTopic.length + Integer.BYTES);
-        tp.putInt(partition.partition()).put(serializedTopic);
+        final byte[] key = TOPIC_PARTITION_SERIALIZER.serialize(null, partition);
         try {
-            return OFFSET_DESERIALIZER.deserialize(null, db.get(offsetsCF, tp.array()));
+            return OFFSET_DESERIALIZER.deserialize(null, db.get(offsetsCF, key));
         } catch (final RocksDBException e) {
             throw new ProcessorStateException("Error while getting committed offset for partition " + partition + " from store " + name, e);
         }
@@ -732,6 +731,28 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
             for (final KeyValueIterator<Bytes, byte[]> iterator : iterators) {
                 iterator.close();
             }
+        }
+    }
+
+    public static class TopicPartitionSerializer implements Serializer<TopicPartition> {
+
+        @Override
+        public byte[] serialize(final String unused, final TopicPartition data) {
+            if (data == null) return null;
+            final ByteBuffer buffer = ByteBuffer.allocate(data.topic().length() + Integer.BYTES);
+            return buffer.putInt(data.partition()).put(data.topic().getBytes(StandardCharsets.UTF_8)).array();
+        }
+    }
+
+    public static class TopicPartitionDeserializer implements Deserializer<TopicPartition> {
+
+        @Override
+        public TopicPartition deserialize(final String unused, final byte[] data) {
+            if (data == null) return null;
+            final ByteBuffer buffer = ByteBuffer.wrap(data);
+            final int partition = buffer.getInt();
+            final String topic = new String(buffer.array(), buffer.arrayOffset() + buffer.position(), buffer.remaining(), StandardCharsets.UTF_8);
+            return new TopicPartition(topic, partition);
         }
     }
 
@@ -825,15 +846,12 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
 
         @Override
         public void writeOffset(final TopicPartition topicPartition, final Long offset, final WriteBatchInterface batch) throws RocksDBException {
-            final byte[] serializedTopic = TOPIC_SERIALIZER.serialize(null, topicPartition.topic());
-            final ByteBuffer tp = ByteBuffer.allocate(serializedTopic.length + Integer.BYTES);
-            tp.putInt(topicPartition.partition()).put(serializedTopic);
-
+            final byte[] key = TOPIC_PARTITION_SERIALIZER.serialize(null, topicPartition);
             if (offset == null) {
-                batch.delete(offsetsCF, tp.array());
+                batch.delete(store.offsetsCF, key);
             } else {
                 final byte[] serializedOffset = OFFSET_SERIALIZER.serialize(null, offset);
-                batch.put(offsetsCF, tp.array(), serializedOffset);
+                batch.put(store.offsetsCF, key, serializedOffset);
             }
         }
     }
@@ -958,14 +976,12 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
 
         @Override
         public void writeOffset(final TopicPartition partition, final Long offset, final WriteBatchInterface batch) throws RocksDBException {
-            final byte[] serializedTopic = TOPIC_SERIALIZER.serialize(null, partition.topic());
-            final ByteBuffer tp = ByteBuffer.allocate(serializedTopic.length + Integer.BYTES);
-            tp.putInt(partition.partition()).put(serializedTopic);
+            final byte[] key = TOPIC_PARTITION_SERIALIZER.serialize(null, partition);
             if (offset == null) {
-                batch.delete(offsetsCF, tp.array());
+                batch.delete(store.offsetsCF, key);
             } else {
                 final byte[] serializedOffset = OFFSET_SERIALIZER.serialize(null, offset);
-                batch.put(offsetsCF, tp.array(), serializedOffset);
+                batch.put(store.offsetsCF, key, serializedOffset);
             }
         }
     }
