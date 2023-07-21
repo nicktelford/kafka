@@ -1196,7 +1196,7 @@ public class RocksDBStoreTest extends AbstractKeyValueStoreTest {
         final StateStoreContext context = getProcessorContext(props);
         rocksDBStore.init(context, null);
 
-        final RocksDBStore.DirectDBAccessor directDBAccessor = new RocksDBStore.DirectDBAccessor(rocksDBStore.db, rocksDBStore.offsetsCF, rocksDBStore.wOptions);
+        final RocksDBStore.DirectDBAccessor directDBAccessor = new RocksDBStore.DirectDBAccessor(rocksDBStore);
 
         final Bytes key = Bytes.wrap("foo".getBytes());
         final byte[] value = "bar".getBytes();
@@ -1215,7 +1215,7 @@ public class RocksDBStoreTest extends AbstractKeyValueStoreTest {
         rocksDBStore.init(context, null);
         ((RocksDBStore.BatchedDBAccessor) rocksDBStore.accessor).isStreamThreadForTest = true;
 
-        final RocksDBStore.DirectDBAccessor directDBAccessor = new RocksDBStore.DirectDBAccessor(rocksDBStore.db, rocksDBStore.offsetsCF, rocksDBStore.wOptions);
+        final RocksDBStore.DirectDBAccessor directDBAccessor = new RocksDBStore.DirectDBAccessor(rocksDBStore);
 
         final Bytes key = Bytes.wrap("foo".getBytes());
         final byte[] value = "bar".getBytes();
@@ -1234,7 +1234,7 @@ public class RocksDBStoreTest extends AbstractKeyValueStoreTest {
         rocksDBStore.init(context, null);
         ((RocksDBStore.BatchedDBAccessor) rocksDBStore.accessor).isStreamThreadForTest = true;
 
-        final RocksDBStore.DirectDBAccessor directDBAccessor = new RocksDBStore.DirectDBAccessor(rocksDBStore.db, rocksDBStore.offsetsCF, rocksDBStore.wOptions);
+        final RocksDBStore.DirectDBAccessor directDBAccessor = new RocksDBStore.DirectDBAccessor(rocksDBStore);
 
         final Bytes key = Bytes.wrap("foo".getBytes());
         final byte[] value = "bar".getBytes();

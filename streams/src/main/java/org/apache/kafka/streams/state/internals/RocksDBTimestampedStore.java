@@ -73,9 +73,9 @@ public class RocksDBTimestampedStore extends RocksDBStore implements Timestamped
         final ColumnFamilyHandle withTimestampCF = columnFamilies.get(2);
         offsetsCF = columnFamilies.get(1);
         if (context.isolationLevel() == IsolationLevel.READ_COMMITTED) {
-            accessor = new BatchedDBAccessor(db, offsetsCF, rOptions, wOptions, false);
+            accessor = new BatchedDBAccessor(this, false);
         } else {
-            accessor = new DirectDBAccessor(db, offsetsCF, wOptions);
+            accessor = new DirectDBAccessor(this);
         }
         final RocksIterator noTimestampsIter = db.newIterator(noTimestampCF);
         noTimestampsIter.seekToFirst();
