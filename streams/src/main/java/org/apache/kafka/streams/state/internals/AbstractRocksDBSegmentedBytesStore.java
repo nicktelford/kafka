@@ -319,9 +319,6 @@ public class AbstractRocksDBSegmentedBytesStore<S extends Segment> implements Se
 
         this.position = segments.openExisting(this.context, observedStreamTime);
 
-        // todo: migrate Position from .position file to latest Segment
-        // todo: also the DualSchema variant
-
         final File positionCheckpointFile = new File(context.stateDir(), name() + ".position");
 
         // migrate legacy Position data from .position file to the current Segment
