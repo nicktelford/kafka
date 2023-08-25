@@ -21,6 +21,7 @@ import static org.apache.kafka.streams.state.internals.RocksDBStore.DB_FILE_DIR;
 
 import java.nio.ByteBuffer;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -353,6 +354,8 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
         final VersionedStoreClient<?> restoreClient = restoreWriteBuffer.getClient();
         final RocksDBStore physicalStore = segmentStores.getPhysicalStore();
 
+        final Map<TopicPartition, Long> changelogOffsets = new HashMap<>();
+
         // note: there is increased risk for hitting an out-of-memory during this restore loop,
         // compared to for non-versioned key-value stores, because this versioned store
         // implementation stores multiple records (for the same key) together in a single RocksDB
@@ -383,21 +386,28 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
                 record.timestamp()
             );
 
-            // update Position offsets in RocksDB offsets column-family
-            // we don't have access to the WriteBatch used for the writes themselves here, so we'll have to settle
-            // for adding them in a separate batch
-            try (final WriteBatch batch = new WriteBatch()) {
-                physicalStore.writePositionOffsetsToBatch(physicalStore.position, batch);
-                physicalStore.write(batch);
-            } catch (final RocksDBException e) {
-                throw new ProcessorStateException("Error writing Position offsets to store " + name, e);
-            }
+            changelogOffsets.put(new TopicPartition(record.topic(), record.partition()), record.offset());
         }
 
         try {
             restoreWriteBuffer.flush();
         } catch (final RocksDBException e) {
             throw new ProcessorStateException("Error restoring batch to store " + name, e);
+        }
+
+        // update changelog and Position offsets in RocksDB offsets column-family
+        // we don't have access to the WriteBatch used for the writes themselves here, so we'll have to settle
+        // for adding them in a separate batch
+        // this isn't a problem, because worst-case scenario: some records are written without their offsets and on
+        // next restore those records are restored again
+        try (final WriteBatch batch = new WriteBatch()) {
+            physicalStore.writePositionOffsetsToBatch(physicalStore.position, batch);
+            for (final Map.Entry<TopicPartition, Long> e : changelogOffsets.entrySet()) {
+                physicalStore.accessor.writeOffset(e.getKey(), e.getValue(), batch);
+            }
+            physicalStore.write(batch);
+        } catch (final RocksDBException e) {
+            throw new ProcessorStateException("Error writing restored offsets to store " + name, e);
         }
     }
 
