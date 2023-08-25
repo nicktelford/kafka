@@ -407,9 +407,7 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
         try {
             for (final String topic : position.getTopics()) {
                 for (final Map.Entry<Integer, Long> e : position.getPartitionPositions(topic).entrySet()) {
-                    final byte[] key = TOPIC_PARTITION_SERIALIZER.serialize(null, new TopicPartition(topic, e.getKey()));
-                    final byte[] value = OFFSET_SERIALIZER.serialize(null, e.getValue());
-                    batch.put(offsetsCF, key, value);
+                    accessor.writeOffset(new TopicPartition(topic, e.getKey()), e.getValue(), batch);
                 }
             }
             log.info("Written {} for store {}", position, name);
@@ -1237,6 +1235,7 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
                 );
                 // If version headers are not present or version is V0
                 cf.addToBatch(record.key(), record.value(), batch);
+                accessor.writeOffset(new TopicPartition(record.topic(), record.partition()), record.offset(), batch);
             }
             writePositionOffsetsToBatch(position, batch);
             write(batch);
