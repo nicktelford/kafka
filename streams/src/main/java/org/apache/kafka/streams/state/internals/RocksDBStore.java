@@ -191,7 +191,7 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
         final File positionCheckpointFile = new File(context.stateDir(), name() + ".position");
         this.position = loadPositionOffsetsFromDatabase();
         migratePositionOffsets(positionCheckpointFile, position);
-        log.info("Store {} initialized with {}", name, position);
+        log.debug("Store {} initialized with {}", name, position);
 
         // value getter should always read directly from rocksDB
         // since it is only for values that are already flushed
@@ -399,7 +399,7 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
                 it.next();
             }
         }
-        log.info("Loaded {} from DB for store {}", position, name);
+        log.debug("Loaded {} from DB for store {}", position, name);
         return position;
     }
 
@@ -410,7 +410,7 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
                     accessor.writeOffset(new TopicPartition(topic, e.getKey()), e.getValue(), batch);
                 }
             }
-            log.info("Written {} for store {}", position, name);
+            log.debug("Written {} for store {}", position, name);
         } catch (final RocksDBException e) {
             throw new ProcessorStateException("Failed to write Position offsets to RocksDBStore " + name, e);
         }
@@ -420,7 +420,7 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
         final OffsetCheckpoint positionCheckpoint = new OffsetCheckpoint(positionCheckpointFile);
         final Position legacyPosition = StoreQueryUtils.readPositionFromCheckpoint(positionCheckpoint);
 
-        log.info("Migrating {} for store {}", legacyPosition, name);
+        log.debug("Migrating {} for store {}", legacyPosition, name);
         position.merge(legacyPosition);
 
         try (final WriteBatch batch = new WriteBatch()) {
@@ -715,7 +715,7 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
         }
         try {
             accessor.commit(changelogOffsets);
-            log.info("Committed store {} with changelogOffsets {}", name, changelogOffsets);
+            log.debug("Committed store {} with changelogOffsets {}", name, changelogOffsets);
         } catch (final RocksDBException e) {
             throw new ProcessorStateException("Error while executing commit from store " + name, e);
         } finally {
@@ -1239,7 +1239,7 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
             }
             writePositionOffsetsToBatch(position, batch);
             write(batch);
-            log.info("Got {} from restored records for store {}", position, name);
+            log.debug("Got {} from restored records for store {}", position, name);
         } catch (final RocksDBException e) {
             throw new ProcessorStateException("Error restoring batch to store " + name, e);
         }
