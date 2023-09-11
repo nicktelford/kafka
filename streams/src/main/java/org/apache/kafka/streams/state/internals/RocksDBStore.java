@@ -81,6 +81,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -847,6 +848,8 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
 
         private final RocksDBStore store;
 
+        private final Map<TopicPartition, byte[]> topicPartitionKeyCache = new HashMap<>();
+
         DirectDBAccessor(final RocksDBStore store) {
             this.store = store;
         }
@@ -913,7 +916,10 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
 
         @Override
         public void writeOffset(final TopicPartition topicPartition, final Long offset, final WriteBatchInterface batch) throws RocksDBException {
-            final byte[] key = TOPIC_PARTITION_SERIALIZER.serialize(null, topicPartition);
+            final byte[] key = topicPartitionKeyCache.computeIfAbsent(
+                    topicPartition,
+                    tp -> TOPIC_PARTITION_SERIALIZER.serialize(null, tp)
+            );
             if (offset == null) {
                 batch.delete(store.offsetsCF, key);
             } else {
@@ -941,6 +947,8 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
         private final WriteBatchWithIndex batch = new WriteBatchWithIndex(true);
         private Position uncommittedPosition = Position.emptyPosition();
         private long uncommittedBytes;
+
+        private final Map<TopicPartition, byte[]> topicPartitionKeyCache = new HashMap<>();
 
         // used to simulate calls from StreamThreads in tests
         boolean isStreamThreadForTest;
@@ -1049,7 +1057,10 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
 
         @Override
         public void writeOffset(final TopicPartition partition, final Long offset, final WriteBatchInterface batch) throws RocksDBException {
-            final byte[] key = TOPIC_PARTITION_SERIALIZER.serialize(null, partition);
+            final byte[] key = topicPartitionKeyCache.computeIfAbsent(
+                partition,
+                tp -> TOPIC_PARTITION_SERIALIZER.serialize(null, tp)
+            );
             if (offset == null) {
                 batch.delete(store.offsetsCF, key);
             } else {
@@ -1227,6 +1238,7 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
 
     void restoreBatch(final Collection<ConsumerRecord<byte[], byte[]>> records) {
         try (final WriteBatch batch = new WriteBatch()) {
+            final Map<TopicPartition, Long> offsets = new HashMap<>();
             for (final ConsumerRecord<byte[], byte[]> record : records) {
                 ChangelogRecordDeserializationHelper.applyChecksAndUpdatePosition(
                     record,
@@ -1235,7 +1247,13 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
                 );
                 // If version headers are not present or version is V0
                 cf.addToBatch(record.key(), record.value(), batch);
-                accessor.writeOffset(new TopicPartition(record.topic(), record.partition()), record.offset(), batch);
+                offsets.put(new TopicPartition(record.topic(), record.partition()), record.offset());
+            }
+            // add offsets for each changelog partition
+            // global stores can have multiple changelog partitions; regular stores will always have just one
+            // this performs better than calling writeOffset for every record, as it avoids serialization overhead
+            for (final Map.Entry<TopicPartition, Long> partitionOffsets : offsets.entrySet()) {
+                accessor.writeOffset(partitionOffsets.getKey(), partitionOffsets.getValue(), batch);
             }
             writePositionOffsetsToBatch(position, batch);
             write(batch);
