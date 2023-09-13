@@ -250,14 +250,16 @@ public interface StateStore {
     /**
      * Return an approximate count of memory used by records not yet committed to this StateStore.
      * <p>
-     * This method will return an approximation of the memory would be freed by the next call to {@link #commit(Map)}.
+     * This method will return an approximation of the memory that would be freed by the next call to {@link
+     * #commit(Map)}.
      * <p>
-     * If this StateStore is unable to approximately count uncommitted memory usage, it will return {@code -1}.
-     * If this StateStore does not support atomic transactions, it will return {@code 0}, because records will always
-     * be immediately written to a non-transactional store, so there will be none awaiting a {@link #commit(Map)}.
+     * If no records have been written to this store since {@link #init(StateStoreContext, StateStore) opening}, or
+     * since the last {@link #commit(Map)}; or if this store does not support atomic transactions, it will return {@code
+     * 0}, as no records are currently being buffered.
      *
-     * @return The approximate size of all records awaiting {@link #commit(Map)}, {@code -1} if the size of uncommitted
-     *         records can't be counted, or {@code 0} if this StateStore does not support transactions.
+     * @return The approximate size of all records awaiting {@link #commit(Map)}; or {@code 0} if this store does not
+     *         support transactions, or has not been written to since {@link #init(StateStoreContext, StateStore)} or
+     *         last {@link #commit(Map)}.
      */
     default long approximateNumUncommittedBytes() {
         return 0;
