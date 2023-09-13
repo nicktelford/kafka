@@ -126,6 +126,8 @@ public class MetricsIntegrationTest {
     private static final String RANGE_LATENCY_MAX = "range-latency-max";
     private static final String FLUSH_LATENCY_AVG = "flush-latency-avg";
     private static final String FLUSH_LATENCY_MAX = "flush-latency-max";
+    private static final String STORE_COMMIT_LATENCY_AVG = "commit-latency-avg";
+    private static final String STORE_COMMIT_LATENCY_MAX = "commit-latency-max";
     private static final String RESTORE_LATENCY_AVG = "restore-latency-avg";
     private static final String RESTORE_LATENCY_MAX = "restore-latency-max";
     private static final String PUT_RATE = "put-rate";
@@ -150,6 +152,8 @@ public class MetricsIntegrationTest {
     private static final String RANGE_TOTAL = "range-total";
     private static final String FLUSH_RATE = "flush-rate";
     private static final String FLUSH_TOTAL = "flush-total";
+    private static final String STORE_COMMIT_RATE = "commit-rate";
+    private static final String STORE_COMMIT_TOTAL = "commit-total";
     private static final String RESTORE_RATE = "restore-rate";
     private static final String RESTORE_TOTAL = "restore-total";
     private static final String PROCESS_LATENCY_AVG = "process-latency-avg";
@@ -584,6 +588,8 @@ public class MetricsIntegrationTest {
         checkMetricByName(listMetricStore, RANGE_LATENCY_MAX, expectedNumberOfLatencyMetrics);
         checkMetricByName(listMetricStore, FLUSH_LATENCY_AVG, expectedNumberOfLatencyMetrics);
         checkMetricByName(listMetricStore, FLUSH_LATENCY_MAX, expectedNumberOfLatencyMetrics);
+        checkMetricByName(listMetricStore, STORE_COMMIT_LATENCY_AVG, expectedNumberOfLatencyMetrics);
+        checkMetricByName(listMetricStore, STORE_COMMIT_LATENCY_MAX, expectedNumberOfLatencyMetrics);
         checkMetricByName(listMetricStore, RESTORE_LATENCY_AVG, expectedNumberOfLatencyMetrics);
         checkMetricByName(listMetricStore, RESTORE_LATENCY_MAX, expectedNumberOfLatencyMetrics);
         checkMetricByName(listMetricStore, FETCH_LATENCY_AVG, 0);
@@ -606,6 +612,8 @@ public class MetricsIntegrationTest {
         checkMetricByName(listMetricStore, RANGE_TOTAL, expectedNumberOfTotalMetrics);
         checkMetricByName(listMetricStore, FLUSH_RATE, expectedNumberOfRateMetrics);
         checkMetricByName(listMetricStore, FLUSH_TOTAL, expectedNumberOfTotalMetrics);
+        checkMetricByName(listMetricStore, STORE_COMMIT_RATE, expectedNumberOfRateMetrics);
+        checkMetricByName(listMetricStore, STORE_COMMIT_TOTAL, expectedNumberOfTotalMetrics);
         checkMetricByName(listMetricStore, RESTORE_RATE, expectedNumberOfRateMetrics);
         checkMetricByName(listMetricStore, RESTORE_TOTAL, expectedNumberOfTotalMetrics);
         checkMetricByName(listMetricStore, FETCH_RATE, 0);
@@ -659,6 +667,8 @@ public class MetricsIntegrationTest {
         checkMetricByName(listMetricStore, RANGE_LATENCY_MAX, 0);
         checkMetricByName(listMetricStore, FLUSH_LATENCY_AVG, 1);
         checkMetricByName(listMetricStore, FLUSH_LATENCY_MAX, 1);
+        checkMetricByName(listMetricStore, STORE_COMMIT_LATENCY_AVG, 1);
+        checkMetricByName(listMetricStore, STORE_COMMIT_LATENCY_MAX, 1);
         checkMetricByName(listMetricStore, RESTORE_LATENCY_AVG, 1);
         checkMetricByName(listMetricStore, RESTORE_LATENCY_MAX, 1);
         checkMetricByName(listMetricStore, FETCH_LATENCY_AVG, 1);
@@ -679,6 +689,7 @@ public class MetricsIntegrationTest {
         checkMetricByName(listMetricStore, RANGE_RATE, 0);
         checkMetricByName(listMetricStore, RANGE_TOTAL, 0);
         checkMetricByName(listMetricStore, FLUSH_RATE, 1);
+        checkMetricByName(listMetricStore, STORE_COMMIT_RATE, 1);
         checkMetricByName(listMetricStore, RESTORE_RATE, 1);
         checkMetricByName(listMetricStore, FETCH_RATE, 1);
         checkMetricByName(listMetricStore, SUPPRESSION_BUFFER_COUNT_AVG, 1);
@@ -712,6 +723,8 @@ public class MetricsIntegrationTest {
         checkMetricByName(listMetricStore, RANGE_LATENCY_MAX, 0);
         checkMetricByName(listMetricStore, FLUSH_LATENCY_AVG, 1);
         checkMetricByName(listMetricStore, FLUSH_LATENCY_MAX, 1);
+        checkMetricByName(listMetricStore, STORE_COMMIT_LATENCY_AVG, 1);
+        checkMetricByName(listMetricStore, STORE_COMMIT_LATENCY_MAX, 1);
         checkMetricByName(listMetricStore, RESTORE_LATENCY_AVG, 1);
         checkMetricByName(listMetricStore, RESTORE_LATENCY_MAX, 1);
         checkMetricByName(listMetricStore, FETCH_LATENCY_AVG, 1);
@@ -731,6 +744,7 @@ public class MetricsIntegrationTest {
         checkMetricByName(listMetricStore, RANGE_RATE, 0);
         checkMetricByName(listMetricStore, RANGE_TOTAL, 0);
         checkMetricByName(listMetricStore, FLUSH_RATE, 1);
+        checkMetricByName(listMetricStore, STORE_COMMIT_RATE, 1);
         checkMetricByName(listMetricStore, RESTORE_RATE, 1);
         checkMetricByName(listMetricStore, FETCH_RATE, 1);
         checkMetricByName(listMetricStore, SUPPRESSION_BUFFER_COUNT_CURRENT, 0);

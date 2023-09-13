@@ -249,6 +249,12 @@ public class MeteredVersionedKeyValueStore<K, V>
     }
 
     @Override
+    @Deprecated
+    public void flush() {
+        internal.flush();
+    }
+
+    @Override
     public void commit(final Map<TopicPartition, Long> changelogOffsets) {
         internal.commit(changelogOffsets);
     }

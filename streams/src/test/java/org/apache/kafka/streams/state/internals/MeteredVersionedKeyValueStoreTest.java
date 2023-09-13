@@ -233,11 +233,20 @@ public class MeteredVersionedKeyValueStoreTest {
     }
 
     @Test
+    @SuppressWarnings("deprecation")
     public void shouldDelegateAndRecordMetricsOnFlush() {
+        store.flush();
+
+        verify(inner).flush();
+        assertThat((Double) getMetric("flush-rate").metricValue(), greaterThan(0.0));
+    }
+
+    @Test
+    public void shouldDelegateAndRecordMetricsOnCommit() {
         store.commit(Collections.emptyMap());
 
         verify(inner).commit(Collections.emptyMap());
-        assertThat((Double) getMetric("flush-rate").metricValue(), greaterThan(0.0));
+        assertThat((Double) getMetric("commit-rate").metricValue(), greaterThan(0.0));
     }
 
     @Test

@@ -382,16 +382,32 @@ public class MeteredWindowStoreTest {
     }
 
     @Test
+    @SuppressWarnings("deprecation")
     public void shouldRecordFlushLatency() {
+        innerStoreMock.flush();
+        replay(innerStoreMock);
+
+        store.init((StateStoreContext) context, store);
+        store.flush();
+
+        // it suffices to verify one flush metric since all flush metrics are recorded by the same sensor
+        // and the sensor is tested elsewhere
+        final KafkaMetric metric = metric("flush-rate");
+        assertTrue((Double) metric.metricValue() > 0);
+        verify(innerStoreMock);
+    }
+
+    @Test
+    public void shouldRecordCommitLatency() {
         innerStoreMock.commit(Collections.emptyMap());
         replay(innerStoreMock);
 
         store.init((StateStoreContext) context, store);
         store.commit(Collections.emptyMap());
 
-        // it suffices to verify one flush metric since all flush metrics are recorded by the same sensor
+        // it suffices to verify one commit metric since all commit metrics are recorded by the same sensor
         // and the sensor is tested elsewhere
-        final KafkaMetric metric = metric("flush-rate");
+        final KafkaMetric metric = metric("commit-rate");
         assertTrue((Double) metric.metricValue() > 0);
         verify(innerStoreMock);
     }
