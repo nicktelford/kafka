@@ -339,14 +339,28 @@ public class MeteredKeyValueStoreTest {
     }
 
     @Test
+    @SuppressWarnings("deprecation")
     public void shouldFlushInnerWhenFlushTimeRecords() {
+        inner.flush();
+        expectLastCall().once();
+        init();
+
+        metered.flush();
+
+        final KafkaMetric metric = metric("flush-rate");
+        assertTrue((Double) metric.metricValue() > 0);
+        verify(inner);
+    }
+
+    @Test
+    public void shouldCommitInnerWhenCommitTimeRecords() {
         inner.commit(Collections.emptyMap());
         expectLastCall().once();
         init();
 
         metered.commit(Collections.emptyMap());
 
-        final KafkaMetric metric = metric("flush-rate");
+        final KafkaMetric metric = metric("commit-rate");
         assertTrue((Double) metric.metricValue() > 0);
         verify(inner);
     }
