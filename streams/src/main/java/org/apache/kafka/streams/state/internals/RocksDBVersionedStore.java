@@ -261,7 +261,7 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
     @Override
     public void commit(final Map<TopicPartition, Long> changelogOffsets) {
         segmentStores.commit(changelogOffsets);
-        // flushing segments store includes flushing latest value store, since they share the
+        // committing segments store includes committing latest value store, since they share the
         // same physical RocksDB instance
     }
 
