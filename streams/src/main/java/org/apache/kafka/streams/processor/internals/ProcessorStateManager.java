@@ -774,7 +774,6 @@ public class ProcessorStateManager implements StateManager {
     public long approximateNumUncommittedBytes() {
         return stores.values().stream()
                 .map(metadata -> metadata.store().approximateNumUncommittedBytes())
-                .filter(x -> x > 0L)
                 .reduce(0L, Long::sum);
     }
 }
