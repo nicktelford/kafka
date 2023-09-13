@@ -28,7 +28,6 @@ import org.apache.kafka.streams.query.Query;
 import org.apache.kafka.streams.query.QueryConfig;
 import org.apache.kafka.streams.query.QueryResult;
 
-import java.util.Collections;
 import java.util.Map;
 
 /**
@@ -106,19 +105,26 @@ public interface StateStore {
     /**
      * Flush any cached data
      *
-     * @deprecated Use {@link #commit(Map)} instead.
+     * @deprecated Use {@link org.apache.kafka.streams.processor.api.ProcessingContext#commit() ProcessorContext#commit()}
+     *             instead.
      */
     @Deprecated
     default void flush() {
-        commit(Collections.emptyMap());
+        // no-op
     }
 
     /**
      * Commit all written records to this StateStore.
      * <p>
+     * This method MUST NOT be called by users from {@link org.apache.kafka.streams.processor.api.Processor processors},
+     * as doing so may violate the consistency guarantees provided by this store, and expected by Kafka Streams.
+     * Instead, users should call {@link org.apache.kafka.streams.processor.api.ProcessingContext#commit()
+     * ProcessorContext#commit()} to request a Task commit.
+     * <p>
      * When called, every write written since the last call to {@link #commit(Map)}, or since this store was {@link
      * #init(StateStoreContext, StateStore) opened} will be made available to readers using the {@link
-     * org.apache.kafka.common.IsolationLevel#READ_COMMITTED} {@link org.apache.kafka.common.IsolationLevel}.
+     * org.apache.kafka.common.IsolationLevel#READ_COMMITTED READ_COMMITTED} {@link
+     * org.apache.kafka.common.IsolationLevel IsolationLevel}.
      * <p>
      * If {@link #persistent()} returns {@code true}, after this method returns, all records written since the last call
      * to {@link #commit(Map)} are guaranteed to be persisted to disk, and available to read, even if this {@link
