@@ -17,7 +17,6 @@
 package org.apache.kafka.streams.state.internals;
 
 import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.common.IsolationLevel;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.metrics.Sensor.RecordingLevel;
 import org.apache.kafka.common.serialization.Deserializer;
@@ -272,7 +271,7 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
         // with the measurements from Rocks DB
         setupStatistics(configs, dbOptions);
         // todo: provide separate offsetsColumnFamilyOptions that's optimized for offset storage
-        openRocksDB(dbOptions, columnFamilyOptions, columnFamilyOptions);
+        openRocksDB(configs, dbOptions, columnFamilyOptions, columnFamilyOptions);
         open = true;
 
         addValueProvidersToMetricsRecorder();
@@ -306,7 +305,8 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
         }
     }
 
-    void openRocksDB(final DBOptions dbOptions,
+    void openRocksDB(final Map<String, Object> configs,
+                     final DBOptions dbOptions,
                      final ColumnFamilyOptions columnFamilyOptions,
                      final ColumnFamilyOptions offsetsColumnFamilyOptions) {
         final List<ColumnFamilyHandle> columnFamilies = openRocksDB(
@@ -318,7 +318,8 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
         cf = new SingleColumnFamilyAccessor(columnFamilies.get(0));
         offsetsCF = columnFamilies.get(1);
 
-        if (context.isolationLevel() == IsolationLevel.READ_COMMITTED) {
+        final String isolationLevel = (String) configs.get(StreamsConfig.DEFAULT_STATE_ISOLATION_LEVEL_CONFIG);
+        if (Objects.equals(isolationLevel, StreamsConfig.READ_COMMITTED)) {
             accessor = new BatchedDBAccessor(this, false);
         } else {
             accessor = new DirectDBAccessor(this);

@@ -17,7 +17,6 @@
 package org.apache.kafka.streams.state.internals;
 
 import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.common.IsolationLevel;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.metrics.Sensor;
 import org.apache.kafka.common.utils.Bytes;
@@ -40,7 +39,6 @@ import org.rocksdb.WriteBatch;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.File;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -62,7 +60,6 @@ public class AbstractRocksDBSegmentedBytesStore<S extends Segment> implements Se
     private Sensor expiredRecordSensor;
     private long observedStreamTime = ConsumerRecord.NO_TIMESTAMP;
     private boolean consistencyEnabled = false;
-    private Position position;
     private volatile boolean open;
 
     AbstractRocksDBSegmentedBytesStore(final String name,
@@ -266,16 +263,6 @@ public class AbstractRocksDBSegmentedBytesStore<S extends Segment> implements Se
             expiredRecordSensor.record(1.0d, context.currentSystemTimeMs());
             LOG.warn("Skipping record for expired segment.");
         } else {
-            // update Position in current Segment - this ensures the Position is updated on-disk in each Segment store
-            if (segment instanceof RocksDBStore) {
-                // segments are always RocksDBStore instances, so this is fine
-                ((RocksDBStore) segment).updatePosition(position, stateStoreContext);
-
-                if (stateStoreContext.isolationLevel() == IsolationLevel.READ_UNCOMMITTED) {
-                    // under READ_UNCOMMITTED, we need to update our current Position with the written Position on every put
-                    position.merge(segment.getPosition());
-                }
-            }
             segment.put(key, value);
         }
     }
@@ -317,16 +304,7 @@ public class AbstractRocksDBSegmentedBytesStore<S extends Segment> implements Se
                 metrics
         );
 
-        this.position = segments.openExisting(this.context, observedStreamTime);
-
-        final File positionCheckpointFile = new File(context.stateDir(), name() + ".position");
-
-        // migrate legacy Position data from .position file to the current Segment
-        final Segment currentSegment = segments.getSegmentForTimestamp(observedStreamTime);
-        if (currentSegment instanceof RocksDBStore) {
-            ((RocksDBStore) currentSegment).migratePositionOffsets(positionCheckpointFile, currentSegment.getPosition());
-            position.merge(currentSegment.getPosition());
-        }
+        segments.openExisting(this.context, observedStreamTime);
 
         // register and possibly restore the state from the logs
         stateStoreContext.register(
@@ -352,14 +330,6 @@ public class AbstractRocksDBSegmentedBytesStore<S extends Segment> implements Se
     @Override
     public void commit(final Map<TopicPartition, Long> changelogOffsets) {
         segments.commit(changelogOffsets);
-
-        // under READ_COMMITTED, we need to update our Position based on the committed Position of every Segment, on-commit
-        // this is because our Position is *not* updated on each put, as it would be under READ_UNCOMMITTED
-        if (stateStoreContext.isolationLevel() == IsolationLevel.READ_COMMITTED) {
-            for (final S segment : segments.allSegments(true)) {
-                position.merge(segment.getPosition());
-            }
-        }
     }
 
     @Override
@@ -431,11 +401,12 @@ public class AbstractRocksDBSegmentedBytesStore<S extends Segment> implements Se
                 ChangelogRecordDeserializationHelper.applyChecksAndUpdatePosition(
                     record,
                     consistencyEnabled,
-                    position
+                    segment.getPosition()
                 );
                 try {
                     final WriteBatch batch = writeBatchMap.computeIfAbsent(segment, s -> new WriteBatch());
                     segment.addToBatch(new KeyValue<>(record.key(), record.value()), batch);
+                    ((RocksDBStore) segment).writePositionOffsetsToBatch(segment.getPosition(), batch);
                 } catch (final RocksDBException e) {
                     throw new ProcessorStateException("Error restoring batch to store " + this.name, e);
                 }
@@ -446,6 +417,11 @@ public class AbstractRocksDBSegmentedBytesStore<S extends Segment> implements Se
 
     @Override
     public Position getPosition() {
+        final Position position = Position.emptyPosition();
+        for (final S segment : segments.allSegments(true)) {
+            position.merge(segment.getPosition());
+        }
+
         return position;
     }
 }

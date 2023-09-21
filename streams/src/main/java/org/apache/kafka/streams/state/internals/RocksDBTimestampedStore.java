@@ -16,10 +16,10 @@
  */
 package org.apache.kafka.streams.state.internals;
 
-import org.apache.kafka.common.IsolationLevel;
 import org.apache.kafka.common.utils.AbstractIterator;
 import org.apache.kafka.common.utils.Bytes;
 import org.apache.kafka.streams.KeyValue;
+import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.errors.InvalidStateStoreException;
 import org.apache.kafka.streams.errors.ProcessorStateException;
 import org.apache.kafka.streams.state.TimestampedBytesStore;
@@ -38,7 +38,9 @@ import org.slf4j.LoggerFactory;
 import java.nio.charset.StandardCharsets;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.Objects;
 
 import static org.apache.kafka.streams.state.TimestampedBytesStore.convertToTimestampedFormat;
 
@@ -60,7 +62,8 @@ public class RocksDBTimestampedStore extends RocksDBStore implements Timestamped
     }
 
     @Override
-    void openRocksDB(final DBOptions dbOptions,
+    void openRocksDB(final Map<String, Object> configs,
+                     final DBOptions dbOptions,
                      final ColumnFamilyOptions columnFamilyOptions,
                      final ColumnFamilyOptions offsetsColumnFamilyOptions) {
         final List<ColumnFamilyHandle> columnFamilies = openRocksDB(
@@ -72,7 +75,8 @@ public class RocksDBTimestampedStore extends RocksDBStore implements Timestamped
         final ColumnFamilyHandle noTimestampCF = columnFamilies.get(0);
         final ColumnFamilyHandle withTimestampCF = columnFamilies.get(2);
         offsetsCF = columnFamilies.get(1);
-        if (context.isolationLevel() == IsolationLevel.READ_COMMITTED) {
+        final String isolationLevel = (String) configs.get(StreamsConfig.DEFAULT_STATE_ISOLATION_LEVEL_CONFIG);
+        if (Objects.equals(isolationLevel, StreamsConfig.READ_COMMITTED)) {
             accessor = new BatchedDBAccessor(this, false);
         } else {
             accessor = new DirectDBAccessor(this);
