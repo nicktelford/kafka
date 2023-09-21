@@ -18,7 +18,6 @@ package org.apache.kafka.streams.state.internals;
 
 import java.util.Optional;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.common.IsolationLevel;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.metrics.Sensor;
 import org.apache.kafka.common.utils.Bytes;
@@ -40,7 +39,6 @@ import org.rocksdb.WriteBatch;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.File;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -62,7 +60,6 @@ public abstract class AbstractDualSchemaRocksDBSegmentedBytesStore<S extends Seg
     private Sensor expiredRecordSensor;
     protected long observedStreamTime = ConsumerRecord.NO_TIMESTAMP;
     protected boolean consistencyEnabled = false;
-    protected Position position;
     private volatile boolean open;
 
     AbstractDualSchemaRocksDBSegmentedBytesStore(final String name,
@@ -194,17 +191,6 @@ public abstract class AbstractDualSchemaRocksDBSegmentedBytesStore<S extends Seg
             expiredRecordSensor.record(1.0d, context.currentSystemTimeMs());
             LOG.warn("Skipping record for expired segment.");
         } else {
-            // update Position in current Segment - this ensures the Position is updated on-disk in each Segment store
-            if (segment instanceof RocksDBStore) {
-                // segments are always RocksDBStore instances, so this is fine
-                ((RocksDBStore) segment).updatePosition(position, stateStoreContext);
-
-                if (stateStoreContext.isolationLevel() == IsolationLevel.READ_UNCOMMITTED) {
-                    // under READ_UNCOMMITTED, we need to update our current Position with the written Position on every put
-                    position.merge(segment.getPosition());
-                }
-            }
-
             // Put to index first so that if put to base failed, when we iterate index, we will
             // find no base value. If put to base first but putting to index fails, when we iterate
             // index, we can't find the key but if we iterate over base store, we can find the key
@@ -264,16 +250,7 @@ public abstract class AbstractDualSchemaRocksDBSegmentedBytesStore<S extends Seg
             metrics
         );
 
-        this.position = segments.openExisting(context, observedStreamTime);
-
-        final File positionCheckpointFile = new File(context.stateDir(), name() + ".position");
-
-        // migrate legacy Position data from .position file to the current Segment
-        final Segment currentSegment = segments.getSegmentForTimestamp(observedStreamTime);
-        if (currentSegment instanceof RocksDBStore) {
-            ((RocksDBStore) currentSegment).migratePositionOffsets(positionCheckpointFile, currentSegment.getPosition());
-            position.merge(currentSegment.getPosition());
-        }
+        segments.openExisting(context, observedStreamTime);
 
         // register and possibly restore the state from the logs
         stateStoreContext.register(
@@ -300,14 +277,6 @@ public abstract class AbstractDualSchemaRocksDBSegmentedBytesStore<S extends Seg
     @Override
     public void commit(final Map<TopicPartition, Long> changelogOffsets) {
         segments.commit(changelogOffsets);
-
-        // under READ_COMMITTED, we need to update our Position based on the committed Position of every Segment, on-commit
-        // this is because our Position is *not* updated on each put, as it would be under READ_UNCOMMITTED
-        if (stateStoreContext.isolationLevel() == IsolationLevel.READ_COMMITTED) {
-            for (final S segment : segments.allSegments(true)) {
-                position.merge(segment.getPosition());
-            }
-        }
     }
 
     @Override
@@ -366,6 +335,11 @@ public abstract class AbstractDualSchemaRocksDBSegmentedBytesStore<S extends Seg
 
     @Override
     public Position getPosition() {
+        final Position position = Position.emptyPosition();
+        for (final Segment segment : segments.allSegments(true)) {
+            position.merge(segment.getPosition());
+        }
+
         return position;
     }
 

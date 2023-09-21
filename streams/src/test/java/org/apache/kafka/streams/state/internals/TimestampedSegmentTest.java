@@ -16,7 +16,6 @@
  */
 package org.apache.kafka.streams.state.internals;
 
-import org.apache.kafka.common.IsolationLevel;
 import org.apache.kafka.common.metrics.Metrics;
 import org.apache.kafka.common.utils.MockTime;
 import org.apache.kafka.streams.StreamsConfig;
@@ -66,7 +65,6 @@ public class TimestampedSegmentTest {
         final StateStoreContext mockContext = mock(StateStoreContext.class);
         expect(mockContext.appConfigs()).andReturn(mkMap(mkEntry(METRICS_RECORDING_LEVEL_CONFIG, "INFO")));
         expect(mockContext.stateDir()).andReturn(directory);
-        expect(mockContext.isolationLevel()).andReturn(IsolationLevel.READ_UNCOMMITTED);
         replay(mockContext);
 
         segment.context = mockContext;

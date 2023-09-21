@@ -739,7 +739,6 @@ public class ProcessorContextImplTest {
         when(streamsConfig.originals()).thenReturn(Collections.emptyMap());
         when(streamsConfig.values()).thenReturn(Collections.emptyMap());
         when(streamsConfig.getString(StreamsConfig.APPLICATION_ID_CONFIG)).thenReturn("add-id");
-        when(streamsConfig.getString(StreamsConfig.PROCESSING_GUARANTEE_CONFIG)).thenReturn(StreamsConfig.AT_LEAST_ONCE);
         return streamsConfig;
     }
 
@@ -751,7 +750,6 @@ public class ProcessorContextImplTest {
         when(streamsConfig.originals()).thenReturn(myValues);
         when(streamsConfig.values()).thenReturn(Collections.emptyMap());
         when(streamsConfig.getString(StreamsConfig.APPLICATION_ID_CONFIG)).thenReturn("add-id");
-        when(streamsConfig.getString(StreamsConfig.PROCESSING_GUARANTEE_CONFIG)).thenReturn(StreamsConfig.AT_LEAST_ONCE);
         return streamsConfig;
     }
 
