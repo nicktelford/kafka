@@ -16,7 +16,6 @@
  */
 package org.apache.kafka.streams.processor.internals;
 
-import org.apache.kafka.common.IsolationLevel;
 import org.apache.kafka.common.header.Headers;
 import org.apache.kafka.common.serialization.Serde;
 import org.apache.kafka.streams.StreamsMetrics;
@@ -157,11 +156,6 @@ public final class StoreToProcessorContextAdapter implements ProcessorContext, S
     @Override
     public Map<String, Object> appConfigsWithPrefix(final String prefix) {
         return delegate.appConfigsWithPrefix(prefix);
-    }
-
-    @Override
-    public IsolationLevel isolationLevel() {
-        return delegate.isolationLevel();
     }
 
     @Override

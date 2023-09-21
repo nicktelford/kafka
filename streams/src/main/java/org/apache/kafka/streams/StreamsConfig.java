@@ -25,6 +25,7 @@ import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.kafka.common.IsolationLevel;
 import org.apache.kafka.common.config.AbstractConfig;
 import org.apache.kafka.common.config.ConfigDef;
 import org.apache.kafka.common.config.ConfigDef.Importance;
@@ -64,7 +65,6 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import static org.apache.kafka.common.IsolationLevel.READ_COMMITTED;
 import static org.apache.kafka.common.config.ConfigDef.ListSize.atMostOfSize;
 import static org.apache.kafka.common.config.ConfigDef.Range.atLeast;
 import static org.apache.kafka.common.config.ConfigDef.Range.between;
@@ -661,6 +661,17 @@ public class StreamsConfig extends AbstractConfig {
         "recommended setting for production; for development you can change this, by adjusting broker setting " +
         "<code>transaction.state.log.replication.factor</code> and <code>transaction.state.log.min.isr</code>.";
 
+    public static final String READ_COMMITTED = "READ_COMMITTED";
+    public static final String READ_UNCOMMITTED = "READ_UNCOMMITTED";
+
+    public static final String DEFAULT_STATE_ISOLATION_LEVEL_CONFIG = "default.state.isolation.level";
+    private static final String DEFAULT_STATE_ISOLATION_LEVEL_DOC = "The default isolation level to use for Interactive Queries against state stores. " +
+        "Possible values are <code>" + READ_UNCOMMITTED + "</code> (default, requires <code>" + AT_LEAST_ONCE + "</code> <code>" + PROCESSING_GUARANTEE_CONFIG + "</code>), and <code>" + READ_COMMITTED + "</code>. " +
+        "If the <code>" + PROCESSING_GUARANTEE_CONFIG + "</code> is any of <code>" + EXACTLY_ONCE + "</code>, <code>" + EXACTLY_ONCE_V2 + "</code> or <code>" + EXACTLY_ONCE_BETA + "</code>; " +
+        "<code>" + READ_COMMITTED + "</code> will be automatically used irrespective of this configuration. " +
+        "Under <code>" + READ_UNCOMMITTED + "</code>, writes will become visible to Interactive Queries immediately. " +
+        "Under <code>" + READ_COMMITTED + "</code>, the maximum latency for writes to become visible to Interactive Queries is defined by <code>" + COMMIT_INTERVAL_MS_CONFIG + "</code>. ";
+
     /** {@code receive.buffer.bytes} */
     @SuppressWarnings("WeakerAccess")
     public static final String RECEIVE_BUFFER_CONFIG = CommonClientConfigs.RECEIVE_BUFFER_CONFIG;
@@ -927,6 +938,12 @@ public class StreamsConfig extends AbstractConfig {
                     in(AT_LEAST_ONCE, EXACTLY_ONCE, EXACTLY_ONCE_BETA, EXACTLY_ONCE_V2),
                     Importance.MEDIUM,
                     PROCESSING_GUARANTEE_DOC)
+            .define(DEFAULT_STATE_ISOLATION_LEVEL_CONFIG,
+                    Type.STRING,
+                    READ_UNCOMMITTED,
+                    in(READ_UNCOMMITTED, READ_COMMITTED),
+                    Importance.MEDIUM,
+                    DEFAULT_STATE_ISOLATION_LEVEL_DOC)
             .define(RACK_AWARE_ASSIGNMENT_NON_OVERLAP_COST_CONFIG,
                     Type.INT,
                     null,
@@ -1178,7 +1195,7 @@ public class StreamsConfig extends AbstractConfig {
     private static final Map<String, Object> CONSUMER_EOS_OVERRIDES;
     static {
         final Map<String, Object> tempConsumerDefaultOverrides = new HashMap<>(CONSUMER_DEFAULT_OVERRIDES);
-        tempConsumerDefaultOverrides.put(ConsumerConfig.ISOLATION_LEVEL_CONFIG, READ_COMMITTED.name().toLowerCase(Locale.ROOT));
+        tempConsumerDefaultOverrides.put(ConsumerConfig.ISOLATION_LEVEL_CONFIG, IsolationLevel.READ_COMMITTED.name().toLowerCase(Locale.ROOT));
         CONSUMER_EOS_OVERRIDES = Collections.unmodifiableMap(tempConsumerDefaultOverrides);
     }
 
@@ -1408,6 +1425,18 @@ public class StreamsConfig extends AbstractConfig {
             log.debug("Using {} default value of {} as exactly once is enabled.",
                     COMMIT_INTERVAL_MS_CONFIG, EOS_DEFAULT_COMMIT_INTERVAL_MS);
             configUpdates.put(COMMIT_INTERVAL_MS_CONFIG, EOS_DEFAULT_COMMIT_INTERVAL_MS);
+        }
+
+        final String processingGuarantee = getString(PROCESSING_GUARANTEE_CONFIG);
+        final String isolationLevel = getString(DEFAULT_STATE_ISOLATION_LEVEL_CONFIG);
+        if (isolationLevel.equals(READ_UNCOMMITTED) && !processingGuarantee.equals(StreamsConfig.AT_LEAST_ONCE)) {
+            log.warn("{} of {} is not supported when {} is {}. Isolation level has been upgraded to {}",
+                    DEFAULT_STATE_ISOLATION_LEVEL_CONFIG,
+                    READ_UNCOMMITTED,
+                    PROCESSING_GUARANTEE_CONFIG,
+                    processingGuarantee,
+                    READ_COMMITTED);
+            configUpdates.put(DEFAULT_STATE_ISOLATION_LEVEL_CONFIG, READ_COMMITTED);
         }
 
         validateRackAwarenessConfiguration();

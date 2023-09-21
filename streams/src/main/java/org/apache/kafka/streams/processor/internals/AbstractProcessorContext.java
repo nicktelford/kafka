@@ -16,12 +16,10 @@
  */
 package org.apache.kafka.streams.processor.internals;
 
-import org.apache.kafka.common.IsolationLevel;
 import org.apache.kafka.common.header.Headers;
 import org.apache.kafka.common.header.internals.RecordHeaders;
 import org.apache.kafka.common.serialization.Serde;
 import org.apache.kafka.streams.StreamsConfig;
-import org.apache.kafka.streams.internals.StreamsConfigUtils;
 import org.apache.kafka.streams.processor.CommitCallback;
 import org.apache.kafka.streams.processor.StateRestoreCallback;
 import org.apache.kafka.streams.processor.StateStore;
@@ -45,7 +43,6 @@ public abstract class AbstractProcessorContext<KOut, VOut> implements InternalPr
     private final StreamsMetricsImpl metrics;
     private final Serde<?> keySerde;
     private final Serde<?> valueSerde;
-    private final IsolationLevel isolationLevel;
     private boolean initialized;
     protected ProcessorRecordContext recordContext;
     protected ProcessorNode<?, ?, ?, ?> currentNode;
@@ -65,8 +62,6 @@ public abstract class AbstractProcessorContext<KOut, VOut> implements InternalPr
         keySerde = null;
         this.cache = cache;
         processorMetadata = new ProcessorMetadata();
-        this.isolationLevel = StreamsConfigUtils.eosEnabled(config) ?
-                IsolationLevel.READ_COMMITTED : IsolationLevel.READ_UNCOMMITTED;
     }
 
     protected abstract StateManager stateManager();
@@ -281,10 +276,5 @@ public abstract class AbstractProcessorContext<KOut, VOut> implements InternalPr
     @Override
     public ProcessorMetadata getProcessorMetadata() {
         return processorMetadata;
-    }
-
-    @Override
-    public IsolationLevel isolationLevel() {
-        return isolationLevel;
     }
 }
