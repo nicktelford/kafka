@@ -58,6 +58,8 @@ public class RocksDBMetrics {
     private static final String COMPACTION_TIME_MAX = COMPACTION_TIME + MAX_SUFFIX;
     private static final String NUMBER_OF_OPEN_FILES = "number-open-files";
     private static final String NUMBER_OF_FILE_ERRORS = "number-file-errors";
+    private static final String NUMBER_OF_OPEN_ITERATORS = "number-open-iterators";
+    private static final String ITERATOR_DURATION = "iterator-duration";
     static final String NUMBER_OF_ENTRIES_ACTIVE_MEMTABLE = "num-entries-active-mem-table";
     static final String NUMBER_OF_DELETES_ACTIVE_MEMTABLE = "num-deletes-active-mem-table";
     static final String NUMBER_OF_ENTRIES_IMMUTABLE_MEMTABLES = "num-entries-imm-mem-tables";
@@ -118,6 +120,9 @@ public class RocksDBMetrics {
     private static final String COMPACTION_TIME_MAX_DESCRIPTION = "Maximum time spent on compaction in ms";
     private static final String NUMBER_OF_OPEN_FILES_DESCRIPTION = "Number of currently open files";
     private static final String NUMBER_OF_FILE_ERRORS_DESCRIPTION = "Total number of file errors occurred";
+    private static final String NUMBER_OF_OPEN_ITERATORS_DESCRIPTION = "Total number of open iterators";
+    private static final String ITERATOR_DURATION_AVG_DESCRIPTION = "Average duration of iterations in ms.";
+    private static final String ITERATOR_DURATION_TOTAL_DESCRIPTION = "Total duration of iterations in ms.";
     private static final String NUMBER_OF_ENTRIES_ACTIVE_MEMTABLE_DESCRIPTION =
         "Total number of entries in the active memtable";
     private static final String NUMBER_OF_DELETES_ACTIVE_MEMTABLES_DESCRIPTION =
@@ -507,6 +512,41 @@ public class RocksDBMetrics {
             ),
             NUMBER_OF_FILE_ERRORS,
             NUMBER_OF_FILE_ERRORS_DESCRIPTION
+        );
+        return sensor;
+    }
+
+    public static Sensor numberOfOpenIteratorsSensor(final StreamsMetricsImpl streamsMetrics,
+                                                  final RocksDBMetricContext metricContext) {
+        final Sensor sensor = createSensor(streamsMetrics, metricContext, NUMBER_OF_OPEN_ITERATORS);
+        addValueMetricToSensor(
+                sensor,
+                STATE_STORE_LEVEL_GROUP,
+                streamsMetrics.storeLevelTagMap(
+                        metricContext.taskName(),
+                        metricContext.metricsScope(),
+                        metricContext.storeName()
+                ),
+                NUMBER_OF_OPEN_ITERATORS,
+                NUMBER_OF_OPEN_ITERATORS_DESCRIPTION
+        );
+        return sensor;
+    }
+
+    public static Sensor iteratorDurationSensor(final StreamsMetricsImpl streamsMetrics,
+                                                final RocksDBMetricContext metricContext) {
+        final Sensor sensor = createSensor(streamsMetrics, metricContext, ITERATOR_DURATION);
+        addAvgAndSumMetricsToSensor(
+                sensor,
+                STATE_STORE_LEVEL_GROUP,
+                streamsMetrics.storeLevelTagMap(
+                        metricContext.taskName(),
+                        metricContext.metricsScope(),
+                        metricContext.storeName()
+                ),
+                ITERATOR_DURATION,
+                ITERATOR_DURATION_AVG_DESCRIPTION,
+                ITERATOR_DURATION_TOTAL_DESCRIPTION
         );
         return sensor;
     }
