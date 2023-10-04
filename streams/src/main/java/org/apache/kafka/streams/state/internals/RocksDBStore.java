@@ -530,8 +530,12 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
         final Bytes prefixBytes = Bytes.wrap(prefixKeySerializer.serialize(null, prefix));
 
         final ManagedKeyValueIterator<Bytes, byte[]> rocksDbPrefixSeekIterator = cf.prefixScan(accessor, prefixBytes);
+        final long startedAt = System.nanoTime();
         openIterators.add(rocksDbPrefixSeekIterator);
-        rocksDbPrefixSeekIterator.onClose(() -> openIterators.remove(rocksDbPrefixSeekIterator));
+        rocksDbPrefixSeekIterator.onClose(() -> {
+            metricsRecorder.recordIteratorDuration(System.nanoTime() - startedAt);
+            openIterators.remove(rocksDbPrefixSeekIterator);
+        });
         accessor.maybeRegisterTransactionIterator(rocksDbPrefixSeekIterator);
 
         return rocksDbPrefixSeekIterator;
@@ -626,8 +630,12 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
         validateStoreOpen();
 
         final ManagedKeyValueIterator<Bytes, byte[]> rocksDBRangeIterator = cf.range(accessor, from, to, forward);
+        final long startedAt = System.nanoTime();
         openIterators.add(rocksDBRangeIterator);
-        rocksDBRangeIterator.onClose(() -> openIterators.remove(rocksDBRangeIterator));
+        rocksDBRangeIterator.onClose(() -> {
+            metricsRecorder.recordIteratorDuration(System.nanoTime() - startedAt);
+            openIterators.remove(rocksDBRangeIterator);
+        });
         accessor.maybeRegisterTransactionIterator(rocksDBRangeIterator);
 
         return rocksDBRangeIterator;
@@ -667,8 +675,12 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
                                                 final Set<KeyValueIterator<Bytes, byte[]>> openIterators) {
         validateStoreOpen();
         final ManagedKeyValueIterator<Bytes, byte[]> rocksDbIterator = cf.all(accessor, forward);
+        final long startedAt = System.nanoTime();
         openIterators.add(rocksDbIterator);
-        rocksDbIterator.onClose(() -> openIterators.remove(rocksDbIterator));
+        rocksDbIterator.onClose(() -> {
+            metricsRecorder.recordIteratorDuration(System.nanoTime() - startedAt);
+            openIterators.remove(rocksDbIterator);
+        });
         accessor.maybeRegisterTransactionIterator(rocksDbIterator);
         return rocksDbIterator;
     }
