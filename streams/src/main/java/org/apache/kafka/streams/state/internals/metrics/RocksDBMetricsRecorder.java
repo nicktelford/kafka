@@ -470,8 +470,8 @@ public class RocksDBMetricsRecorder {
             numberOfOpenFiles += valueProviders.statistics.getAndResetTickerCount(TickerType.NO_FILE_OPENS)
                 - valueProviders.statistics.getAndResetTickerCount(TickerType.NO_FILE_CLOSES);
             numberOfFileErrors += valueProviders.statistics.getAndResetTickerCount(TickerType.NO_FILE_ERRORS);
-            iteratorsCreated += valueProviders.statistics.getAndResetTickerCount(TickerType.NO_ITERATOR_CREATED);
-            iteratorsDeleted += valueProviders.statistics.getAndResetTickerCount(TickerType.NO_ITERATOR_DELETED);
+            iteratorsCreated += valueProviders.statistics.getTickerCount(TickerType.NO_ITERATOR_CREATED);
+            iteratorsDeleted += valueProviders.statistics.getTickerCount(TickerType.NO_ITERATOR_DELETED);
             final HistogramData memtableFlushTimeData = valueProviders.statistics.getHistogramData(HistogramType.FLUSH_TIME);
             memtableFlushTimeSum += memtableFlushTimeData.getSum();
             memtableFlushTimeCount += memtableFlushTimeData.getCount();
