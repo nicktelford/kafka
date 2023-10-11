@@ -471,16 +471,18 @@ public class RocksDBMetricsRecorderTest {
         when(statisticsToAdd2.getAndResetTickerCount(TickerType.NO_FILE_ERRORS)).thenReturn(11L);
         final double expectedNumberOfFileErrorsSensor = 11 + 34;
 
-        when(statisticsToAdd1.getAndResetTickerCount(TickerType.NO_ITERATOR_CREATED)).thenReturn(5L);
-        when(statisticsToAdd1.getAndResetTickerCount(TickerType.NO_ITERATOR_DELETED)).thenReturn(5L);
-        when(statisticsToAdd2.getAndResetTickerCount(TickerType.NO_ITERATOR_CREATED)).thenReturn(2L);
-        when(statisticsToAdd2.getAndResetTickerCount(TickerType.NO_ITERATOR_DELETED)).thenReturn(1L);
+        when(statisticsToAdd1.getTickerCount(TickerType.NO_ITERATOR_CREATED)).thenReturn(5L);
+        when(statisticsToAdd1.getTickerCount(TickerType.NO_ITERATOR_DELETED)).thenReturn(5L);
+        when(statisticsToAdd2.getTickerCount(TickerType.NO_ITERATOR_CREATED)).thenReturn(2L);
+        when(statisticsToAdd2.getTickerCount(TickerType.NO_ITERATOR_DELETED)).thenReturn(1L);
         final double expectedNumberOfOpenIteratorsSensor = 1;
 
         recorder.record(now);
 
-        verify(statisticsToAdd1, times(19)).getAndResetTickerCount(isA(TickerType.class));
-        verify(statisticsToAdd2, times(19)).getAndResetTickerCount(isA(TickerType.class));
+        verify(statisticsToAdd1, times(17)).getAndResetTickerCount(isA(TickerType.class));
+        verify(statisticsToAdd2, times(17)).getAndResetTickerCount(isA(TickerType.class));
+        verify(statisticsToAdd1, times(2)).getTickerCount(isA(TickerType.class));
+        verify(statisticsToAdd2, times(2)).getTickerCount(isA(TickerType.class));
         verify(statisticsToAdd1, times(2)).getHistogramData(isA(HistogramType.class));
         verify(statisticsToAdd2, times(2)).getHistogramData(isA(HistogramType.class));
         verify(bytesWrittenToDatabaseSensor).record(expectedBytesWrittenToDatabaseSensor, now);
