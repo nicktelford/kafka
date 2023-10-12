@@ -153,6 +153,16 @@ public class GlobalProcessorContextImpl extends AbstractProcessorContext<Object,
     }
 
     @Override
+    public void suspend() {
+        throw new UnsupportedOperationException("this should not happen: suspend() not supported in global processor context.");
+    }
+
+    @Override
+    public Task.State taskState() {
+        return null;
+    }
+
+    @Override
     public void registerCacheFlushListener(final String namespace, final DirtyEntryFlushListener listener) {
         cache.addDirtyEntryFlushListener(namespace, listener);
     }

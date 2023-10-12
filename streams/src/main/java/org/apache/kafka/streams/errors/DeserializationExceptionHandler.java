@@ -50,7 +50,9 @@ public interface DeserializationExceptionHandler extends Configurable {
         /* continue with processing */
         CONTINUE(0, "CONTINUE"),
         /* fail the processing and stop */
-        FAIL(1, "FAIL");
+        FAIL(1, "FAIL"),
+        /* suspend processing the current Task, but continue other Tasks */
+        SUSPEND(2, "SUSPEND");
 
         /** an english description of the api--this is for debugging and can change */
         public final String name;

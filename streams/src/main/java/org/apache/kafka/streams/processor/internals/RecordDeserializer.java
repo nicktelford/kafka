@@ -82,7 +82,26 @@ class RecordDeserializer {
                 throw new StreamsException("Fatal user code error in deserialization error callback", fatalUserException);
             }
 
-            if (response == DeserializationExceptionHandler.DeserializationHandlerResponse.FAIL) {
+            if (response == DeserializationExceptionHandler.DeserializationHandlerResponse.SUSPEND) {
+                log.error(
+                    "Suspending Task {} due to deserialization error. topic=[{}] partition=[{}] offset=[{}]",
+                    processorContext.taskId(),
+                    rawRecord.topic(),
+                    rawRecord.partition(),
+                    rawRecord.offset(),
+                    deserializationException
+                );
+                if (((InternalProcessorContext<?, ?>) processorContext).taskType() == Task.TaskType.GLOBAL) {
+                    throw new StreamsException(
+                            "Deserialization exception handler is set to suspend upon a deserialization error, but " +
+                                    "the error occurred in the Global Task, which cannot be suspended.",
+                            deserializationException
+                    );
+                } else {
+                    ((InternalProcessorContext<?, ?>) processorContext).suspend();
+                }
+                return null;
+            } else if (response == DeserializationExceptionHandler.DeserializationHandlerResponse.FAIL) {
                 throw new StreamsException("Deserialization exception handler is set to fail upon" +
                     " a deserialization error. If you would rather have the streaming pipeline" +
                     " continue after a deserialization error, please set the " +

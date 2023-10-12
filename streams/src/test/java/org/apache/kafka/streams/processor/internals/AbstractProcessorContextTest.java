@@ -257,6 +257,15 @@ public class AbstractProcessorContextTest {
         }
 
         @Override
+        public void suspend() {
+        }
+
+        @Override
+        public Task.State taskState() {
+            return Task.State.RUNNING;
+        }
+
+        @Override
         public void registerCacheFlushListener(final String namespace, final DirtyEntryFlushListener listener) {
         }
 

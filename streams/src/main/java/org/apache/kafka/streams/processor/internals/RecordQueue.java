@@ -23,7 +23,6 @@ import org.apache.kafka.common.utils.LogContext;
 import org.apache.kafka.streams.errors.DeserializationExceptionHandler;
 import org.apache.kafka.streams.errors.StreamsException;
 import org.apache.kafka.streams.processor.internals.metrics.TaskMetrics;
-import org.apache.kafka.streams.processor.api.ProcessorContext;
 import org.apache.kafka.streams.processor.TimestampExtractor;
 import org.apache.kafka.streams.processor.internals.metrics.TopicMetrics;
 
@@ -45,7 +44,7 @@ public class RecordQueue {
     private final Logger log;
     private final SourceNode<?, ?> source;
     private final TopicPartition partition;
-    private final ProcessorContext<?, ?> processorContext;
+    private final InternalProcessorContext<?, ?> processorContext;
     private final TimestampExtractor timestampExtractor;
     private final RecordDeserializer recordDeserializer;
     private final ArrayDeque<ConsumerRecord<byte[], byte[]>> fifoQueue;
@@ -202,6 +201,12 @@ public class RecordQueue {
             final ConsumerRecord<byte[], byte[]> raw = fifoQueue.pollFirst();
             final ConsumerRecord<Object, Object> deserialized =
                 recordDeserializer.deserialize(processorContext, raw);
+
+            // a deserialization error occurred that suspended the Task, stop trying to poll and deserialize records
+            if (processorContext.taskState() == Task.State.SUSPENDED) {
+                // we do not set lastCorruptedRecord here, because we do not want to commit offsets for this Task
+                break;
+            }
 
             if (deserialized == null) {
                 // this only happens if the deserializer decides to skip. It has already logged the reason.
