@@ -33,6 +33,7 @@ import org.apache.kafka.streams.processor.internals.ProcessorNode;
 import org.apache.kafka.streams.processor.internals.ProcessorRecordContext;
 import org.apache.kafka.streams.processor.internals.RecordCollector;
 import org.apache.kafka.streams.processor.internals.StreamTask;
+import org.apache.kafka.streams.processor.internals.Task;
 import org.apache.kafka.streams.processor.internals.Task.TaskType;
 import org.apache.kafka.streams.processor.internals.metrics.StreamsMetricsImpl;
 import org.apache.kafka.streams.query.Position;
@@ -181,6 +182,15 @@ public class MockInternalProcessorContext extends MockProcessorContext implement
 
     @Override
     public void registerCacheFlushListener(final String namespace, final DirtyEntryFlushListener listener) {
+    }
+
+    @Override
+    public void suspend() {
+    }
+
+    @Override
+    public Task.State taskState() {
+        return Task.State.RUNNING;
     }
 
     @Override

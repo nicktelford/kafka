@@ -436,6 +436,10 @@ public class StreamTask extends AbstractTask implements ProcessorNodePunctuator,
         if (offset == null) {
             try {
                 offset = mainConsumer.position(partition);
+
+                if (state() == State.SUSPENDED && offset > 0L) {
+                    offset--;
+                }
             } catch (final TimeoutException error) {
                 // the `consumer.position()` call should never block, because we know that we did process data
                 // for the requested partition and thus the consumer should have a valid local position

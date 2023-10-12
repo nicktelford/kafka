@@ -36,6 +36,7 @@ import org.apache.kafka.streams.processor.internals.RecordCollector;
 import org.apache.kafka.streams.processor.internals.StateManager;
 import org.apache.kafka.streams.processor.internals.StateManagerStub;
 import org.apache.kafka.streams.processor.internals.StreamTask;
+import org.apache.kafka.streams.processor.internals.Task;
 import org.apache.kafka.streams.processor.internals.Task.TaskType;
 import org.apache.kafka.streams.query.Position;
 import org.apache.kafka.streams.state.internals.ThreadCache;
@@ -142,6 +143,15 @@ public class NoOpProcessorContext extends AbstractProcessorContext<Object, Objec
 
     @Override
     public void transitionToStandby(final ThreadCache newCache) {
+    }
+
+    @Override
+    public void suspend() {
+    }
+
+    @Override
+    public Task.State taskState() {
+        return Task.State.RUNNING;
     }
 
     @Override

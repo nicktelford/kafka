@@ -97,6 +97,22 @@ public class ProcessorContextImpl extends AbstractProcessorContext<Object, Objec
     }
 
     @Override
+    public void suspend() {
+        if (streamTask != null) {
+            streamTask.suspend();
+        }
+    }
+
+    @Override
+    public Task.State taskState() {
+        if (streamTask != null) {
+            return streamTask.state();
+        } else {
+            return null;
+        }
+    }
+
+    @Override
     public void registerCacheFlushListener(final String namespace, final DirtyEntryFlushListener listener) {
         cacheNameToFlushListener.put(namespace, listener);
         cache.addDirtyEntryFlushListener(namespace, listener);

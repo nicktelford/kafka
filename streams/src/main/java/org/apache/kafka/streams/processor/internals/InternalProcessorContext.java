@@ -104,6 +104,16 @@ public interface InternalProcessorContext<KOut, VOut>
     void transitionToStandby(final ThreadCache newCache);
 
     /**
+     * Suspends the current Task from being executed.
+     */
+    void suspend();
+
+    /**
+     * @return the current State of the Task being processed.
+     */
+    Task.State taskState();
+
+    /**
      * Register a dirty entry flush listener for a particular namespace
      */
     void registerCacheFlushListener(final String namespace, final DirtyEntryFlushListener listener);

@@ -46,6 +46,7 @@ import org.apache.kafka.streams.processor.internals.RecordCollector;
 import org.apache.kafka.streams.processor.internals.StateManager;
 import org.apache.kafka.streams.processor.internals.StateManagerStub;
 import org.apache.kafka.streams.processor.internals.StreamTask;
+import org.apache.kafka.streams.processor.internals.Task;
 import org.apache.kafka.streams.processor.internals.Task.TaskType;
 import org.apache.kafka.streams.processor.internals.ToInternal;
 import org.apache.kafka.streams.processor.internals.metrics.StreamsMetricsImpl;
@@ -78,6 +79,7 @@ public class InternalMockProcessorContext<KOut, VOut>
     private final ToInternal toInternal = new ToInternal();
 
     private TaskType taskType = TaskType.ACTIVE;
+    private Task.State taskState = Task.State.RUNNING;
     private Serde<?> keySerde;
     private Serde<?> valueSerde;
     private long timestamp = -1L;
@@ -473,6 +475,16 @@ public class InternalMockProcessorContext<KOut, VOut>
     @Override
     public void transitionToStandby(final ThreadCache newCache) {
         taskType = TaskType.STANDBY;
+    }
+
+    @Override
+    public void suspend() {
+        taskState = Task.State.SUSPENDED;
+    }
+
+    @Override
+    public Task.State taskState() {
+        return taskState;
     }
 
     @Override

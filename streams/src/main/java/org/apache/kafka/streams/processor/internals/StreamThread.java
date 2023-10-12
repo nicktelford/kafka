@@ -1122,7 +1122,7 @@ public class StreamThread extends Thread {
                 taskManager.allOwnedTasks()
                     .values()
                     .stream()
-                    .filter(t -> t.state() == Task.State.RUNNING || t.state() == Task.State.RESTORING)
+                    .filter(t -> t.state() == Task.State.RUNNING || t.state() == Task.State.RESTORING || (t.state() == Task.State.SUSPENDED && t.commitNeeded()))
                     .collect(Collectors.toSet())
             );
 

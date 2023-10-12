@@ -35,6 +35,7 @@ import org.apache.kafka.common.utils.MockTime;
 import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.errors.LogAndContinueExceptionHandler;
 import org.apache.kafka.streams.errors.LogAndFailExceptionHandler;
+import org.apache.kafka.streams.errors.LogAndSuspendExceptionHandler;
 import org.apache.kafka.streams.errors.StreamsException;
 import org.apache.kafka.streams.processor.FailOnInvalidTimestamp;
 import org.apache.kafka.streams.processor.LogAndSkipOnInvalidTimestamp;
@@ -97,6 +98,13 @@ public class RecordQueueTest {
         new LogAndContinueExceptionHandler(),
         context,
         new LogContext());
+    private final RecordQueue queueThatSuspendsOnDeserializeErrors = new RecordQueue(
+            new TopicPartition("topic", 1),
+            mockSourceNodeWithMetrics,
+            timestampExtractor,
+            new LogAndSuspendExceptionHandler(),
+            context,
+            new LogContext());
 
     private final byte[] recordValue = intSerializer.serialize(null, 10);
     private final byte[] recordKey = intSerializer.serialize(null, 1);
@@ -379,6 +387,37 @@ public class RecordQueueTest {
         queueThatSkipsDeserializeErrors.addRawRecords(records);
         assertEquals(1, queueThatSkipsDeserializeErrors.size());
         assertEquals(new CorruptedRecord(record), queueThatSkipsDeserializeErrors.poll(0));
+    }
+
+    @Test
+    public void shouldNotThrowStreamsExceptionWhenKeyDeserializationFailsWithSuspendHandler() {
+        final byte[] key = Serdes.Long().serializer().serialize("foo", 1L);
+        final ConsumerRecord<byte[], byte[]> record = new ConsumerRecord<>("topic", 1, 1, 0L,
+                TimestampType.CREATE_TIME, 0, 0, key, recordValue,
+                new RecordHeaders(), Optional.empty());
+        final List<ConsumerRecord<byte[], byte[]>> records = Collections.singletonList(record);
+
+        assertEquals(Task.State.RUNNING, context.taskState());
+        assertEquals(0, queueThatSuspendsOnDeserializeErrors.addRawRecords(records));
+        assertEquals(0, queueThatSuspendsOnDeserializeErrors.size());
+        assertTrue(queueThatSuspendsOnDeserializeErrors.isEmpty());
+        assertEquals(Task.State.SUSPENDED, context.taskState());
+    }
+
+    @Test
+    public void shouldNotThrowStreamsExceptionWhenValueDeserializationFailsWithSuspendHandler() {
+        final byte[] value = Serdes.Long().serializer().serialize("foo", 1L);
+        final ConsumerRecord<byte[], byte[]> record = new ConsumerRecord<>("topic", 1, 1, 0L,
+                TimestampType.CREATE_TIME, 0, 0, recordKey, value,
+                new RecordHeaders(), Optional.empty());
+        final List<ConsumerRecord<byte[], byte[]>> records = Collections.singletonList(
+                record);
+
+        assertEquals(Task.State.RUNNING, context.taskState());
+        assertEquals(0, queueThatSuspendsOnDeserializeErrors.addRawRecords(records));
+        assertEquals(0, queueThatSuspendsOnDeserializeErrors.size());
+        assertTrue(queueThatSuspendsOnDeserializeErrors.isEmpty());
+        assertEquals(Task.State.SUSPENDED, context.taskState());
     }
 
     @Test
