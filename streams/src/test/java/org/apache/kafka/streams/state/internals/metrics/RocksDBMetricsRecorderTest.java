@@ -87,6 +87,10 @@ public class RocksDBMetricsRecorderTest {
     private final Sensor blockCacheDataHitRatioSensor = mock(Sensor.class);
     private final Sensor blockCacheIndexHitRatioSensor = mock(Sensor.class);
     private final Sensor blockCacheFilterHitRatioSensor = mock(Sensor.class);
+    private final Sensor blockCacheIndexBytesInsertedSensor = mock(Sensor.class);
+    private final Sensor blockCacheIndexBytesEvictedSensor = mock(Sensor.class);
+    private final Sensor blockCacheFilterBytesInsertedSensor = mock(Sensor.class);
+    private final Sensor blockCacheFilterBytesEvictedSensor = mock(Sensor.class);
     private final Sensor bytesReadDuringCompactionSensor = mock(Sensor.class);
     private final Sensor bytesWrittenDuringCompactionSensor = mock(Sensor.class);
     private final Sensor compactionTimeAvgSensor = mock(Sensor.class);
@@ -447,6 +451,22 @@ public class RocksDBMetricsRecorderTest {
         when(statisticsToAdd2.getAndResetTickerCount(TickerType.BLOCK_CACHE_FILTER_MISS)).thenReturn(5L);
         final double expectedBlockCacheFilterHitRatioSensor = (double) 5 / (5 + 9);
 
+        when(statisticsToAdd1.getAndResetTickerCount(TickerType.BLOCK_CACHE_INDEX_BYTES_INSERT)).thenReturn(4096L);
+        when(statisticsToAdd2.getAndResetTickerCount(TickerType.BLOCK_CACHE_INDEX_BYTES_INSERT)).thenReturn(4096L);
+        final double expectedBlockCacheIndexBytesInserted = (double) (4096L + 4096L);
+
+        when(statisticsToAdd1.getAndResetTickerCount(TickerType.BLOCK_CACHE_INDEX_BYTES_EVICT)).thenReturn(0L);
+        when(statisticsToAdd2.getAndResetTickerCount(TickerType.BLOCK_CACHE_INDEX_BYTES_EVICT)).thenReturn(4096L);
+        final double expectedBlockCacheIndexBytesEvicted = 4096d;
+
+        when(statisticsToAdd1.getAndResetTickerCount(TickerType.BLOCK_CACHE_FILTER_BYTES_INSERT)).thenReturn(8192L);
+        when(statisticsToAdd2.getAndResetTickerCount(TickerType.BLOCK_CACHE_FILTER_BYTES_INSERT)).thenReturn(4096L);
+        final double expectedBlockCacheFilterBytesInserted = (double) (8192L + 4096L);
+
+        when(statisticsToAdd1.getAndResetTickerCount(TickerType.BLOCK_CACHE_FILTER_BYTES_EVICT)).thenReturn(4096L);
+        when(statisticsToAdd2.getAndResetTickerCount(TickerType.BLOCK_CACHE_FILTER_BYTES_EVICT)).thenReturn(4096L);
+        final double expectedBlockCacheFilterBytesEvicted = 8192L;
+
         when(statisticsToAdd1.getAndResetTickerCount(TickerType.COMPACT_WRITE_BYTES)).thenReturn(2L);
         when(statisticsToAdd2.getAndResetTickerCount(TickerType.COMPACT_WRITE_BYTES)).thenReturn(4L);
         final double expectedBytesWrittenDuringCompactionSensor = 2 + 4;
@@ -482,8 +502,8 @@ public class RocksDBMetricsRecorderTest {
 
         recorder.record(now);
 
-        verify(statisticsToAdd1, times(19)).getAndResetTickerCount(isA(TickerType.class));
-        verify(statisticsToAdd2, times(19)).getAndResetTickerCount(isA(TickerType.class));
+        verify(statisticsToAdd1, times(23)).getAndResetTickerCount(isA(TickerType.class));
+        verify(statisticsToAdd2, times(23)).getAndResetTickerCount(isA(TickerType.class));
         verify(statisticsToAdd1, times(2)).getHistogramData(isA(HistogramType.class));
         verify(statisticsToAdd2, times(2)).getHistogramData(isA(HistogramType.class));
         verify(bytesWrittenToDatabaseSensor).record(expectedBytesWrittenToDatabaseSensor, now);
@@ -497,6 +517,10 @@ public class RocksDBMetricsRecorderTest {
         verify(blockCacheDataHitRatioSensor).record(expectedBlockCacheDataHitRatioSensor, now);
         verify(blockCacheIndexHitRatioSensor).record(expectedBlockCacheIndexHitRatioSensor, now);
         verify(blockCacheFilterHitRatioSensor).record(expectedBlockCacheFilterHitRatioSensor, now);
+        verify(blockCacheIndexBytesInsertedSensor).record(expectedBlockCacheIndexBytesInserted, now);
+        verify(blockCacheIndexBytesEvictedSensor).record(expectedBlockCacheIndexBytesEvicted, now);
+        verify(blockCacheFilterBytesInsertedSensor).record(expectedBlockCacheFilterBytesInserted, now);
+        verify(blockCacheFilterBytesEvictedSensor).record(expectedBlockCacheFilterBytesEvicted, now);
         verify(bytesWrittenDuringCompactionSensor).record(expectedBytesWrittenDuringCompactionSensor, now);
         verify(bytesReadDuringCompactionSensor).record(expectedBytesReadDuringCompactionSensor, now);
         verify(compactionTimeAvgSensor).record(expectedCompactionTimeAvgSensor, now);
@@ -597,6 +621,14 @@ public class RocksDBMetricsRecorderTest {
             .thenReturn(blockCacheIndexHitRatioSensor);
         dbMetrics.when(() -> RocksDBMetrics.blockCacheFilterHitRatioSensor(streamsMetrics, metricsContext))
             .thenReturn(blockCacheFilterHitRatioSensor);
+        dbMetrics.when(() -> RocksDBMetrics.blockCacheIndexBytesInsertedSensor(streamsMetrics, metricsContext))
+            .thenReturn(blockCacheIndexBytesInsertedSensor);
+        dbMetrics.when(() -> RocksDBMetrics.blockCacheIndexBytesEvictedSensor(streamsMetrics, metricsContext))
+                .thenReturn(blockCacheIndexBytesEvictedSensor);
+        dbMetrics.when(() -> RocksDBMetrics.blockCacheFilterBytesInsertedSensor(streamsMetrics, metricsContext))
+                .thenReturn(blockCacheFilterBytesInsertedSensor);
+        dbMetrics.when(() -> RocksDBMetrics.blockCacheFilterBytesEvictedSensor(streamsMetrics, metricsContext))
+                .thenReturn(blockCacheFilterBytesEvictedSensor);
         dbMetrics.when(() -> RocksDBMetrics.bytesWrittenDuringCompactionSensor(streamsMetrics, metricsContext))
             .thenReturn(bytesWrittenDuringCompactionSensor);
         dbMetrics.when(() -> RocksDBMetrics.bytesReadDuringCompactionSensor(streamsMetrics, metricsContext))
