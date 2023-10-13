@@ -94,7 +94,8 @@ public class RocksDBMetricsRecorderTest {
     private final Sensor compactionTimeMaxSensor = mock(Sensor.class);
     private final Sensor numberOfOpenFilesSensor = mock(Sensor.class);
     private final Sensor numberOfFileErrorsSensor = mock(Sensor.class);
-    private final Sensor numberOfOpenIteratorsSensor = mock(Sensor.class);
+    private final Sensor iteratorsCreatedSensor = mock(Sensor.class);
+    private final Sensor iteratorsDeletedSensor = mock(Sensor.class);
     private final Sensor iteratorDurationSensor = mock(Sensor.class);
 
     private final StreamsMetricsImpl streamsMetrics = mock(StreamsMetricsImpl.class);
@@ -142,7 +143,8 @@ public class RocksDBMetricsRecorderTest {
         dbMetrics.verify(() -> RocksDBMetrics.compactionTimeMaxSensor(any(), any()));
         dbMetrics.verify(() -> RocksDBMetrics.numberOfOpenFilesSensor(any(), any()));
         dbMetrics.verify(() -> RocksDBMetrics.numberOfFileErrorsSensor(any(), any()));
-        dbMetrics.verify(() -> RocksDBMetrics.numberOfOpenIteratorsSensor(any(), any()));
+        dbMetrics.verify(() -> RocksDBMetrics.iteratorsCreatedSensor(any(), any()));
+        dbMetrics.verify(() -> RocksDBMetrics.iteratorsDeletedSensor(any(), any()));
         dbMetrics.verify(() -> RocksDBMetrics.iteratorDurationSensor(any(), any()));
         dbMetrics.verify(() -> RocksDBMetrics.addNumImmutableMemTableMetric(eq(streamsMetrics), eq(metricsContext), any()));
         dbMetrics.verify(() -> RocksDBMetrics.addCurSizeActiveMemTable(eq(streamsMetrics), eq(metricsContext), any()));
@@ -471,18 +473,17 @@ public class RocksDBMetricsRecorderTest {
         when(statisticsToAdd2.getAndResetTickerCount(TickerType.NO_FILE_ERRORS)).thenReturn(11L);
         final double expectedNumberOfFileErrorsSensor = 11 + 34;
 
-        when(statisticsToAdd1.getTickerCount(TickerType.NO_ITERATOR_CREATED)).thenReturn(5L);
-        when(statisticsToAdd1.getTickerCount(TickerType.NO_ITERATOR_DELETED)).thenReturn(5L);
-        when(statisticsToAdd2.getTickerCount(TickerType.NO_ITERATOR_CREATED)).thenReturn(2L);
-        when(statisticsToAdd2.getTickerCount(TickerType.NO_ITERATOR_DELETED)).thenReturn(1L);
-        final double expectedNumberOfOpenIteratorsSensor = 1;
+        when(statisticsToAdd1.getAndResetTickerCount(TickerType.NO_ITERATOR_CREATED)).thenReturn(5L);
+        when(statisticsToAdd1.getAndResetTickerCount(TickerType.NO_ITERATOR_DELETED)).thenReturn(5L);
+        when(statisticsToAdd2.getAndResetTickerCount(TickerType.NO_ITERATOR_CREATED)).thenReturn(2L);
+        when(statisticsToAdd2.getAndResetTickerCount(TickerType.NO_ITERATOR_DELETED)).thenReturn(1L);
+        final double expectedIteratorsCreated = 7;
+        final double expectedIteratorsDeleted = 6;
 
         recorder.record(now);
 
-        verify(statisticsToAdd1, times(17)).getAndResetTickerCount(isA(TickerType.class));
-        verify(statisticsToAdd2, times(17)).getAndResetTickerCount(isA(TickerType.class));
-        verify(statisticsToAdd1, times(2)).getTickerCount(isA(TickerType.class));
-        verify(statisticsToAdd2, times(2)).getTickerCount(isA(TickerType.class));
+        verify(statisticsToAdd1, times(19)).getAndResetTickerCount(isA(TickerType.class));
+        verify(statisticsToAdd2, times(19)).getAndResetTickerCount(isA(TickerType.class));
         verify(statisticsToAdd1, times(2)).getHistogramData(isA(HistogramType.class));
         verify(statisticsToAdd2, times(2)).getHistogramData(isA(HistogramType.class));
         verify(bytesWrittenToDatabaseSensor).record(expectedBytesWrittenToDatabaseSensor, now);
@@ -503,7 +504,8 @@ public class RocksDBMetricsRecorderTest {
         verify(compactionTimeMaxSensor).record(expectedCompactionTimeMaxSensor, now);
         verify(numberOfOpenFilesSensor).record(expectedNumberOfOpenFilesSensor, now);
         verify(numberOfFileErrorsSensor).record(expectedNumberOfFileErrorsSensor, now);
-        verify(numberOfOpenIteratorsSensor).record(expectedNumberOfOpenIteratorsSensor, now);
+        verify(iteratorsCreatedSensor).record(expectedIteratorsCreated, now);
+        verify(iteratorsDeletedSensor).record(expectedIteratorsDeleted, now);
     }
 
     @Test
@@ -538,7 +540,8 @@ public class RocksDBMetricsRecorderTest {
             compactionTimeMaxSensor,
             numberOfOpenFilesSensor,
             numberOfFileErrorsSensor,
-            numberOfOpenIteratorsSensor,
+            iteratorsCreatedSensor,
+            iteratorsDeletedSensor,
             iteratorDurationSensor
         );
     }
@@ -608,9 +611,11 @@ public class RocksDBMetricsRecorderTest {
             .thenReturn(numberOfOpenFilesSensor);
         dbMetrics.when(() -> RocksDBMetrics.numberOfFileErrorsSensor(streamsMetrics, metricsContext))
             .thenReturn(numberOfFileErrorsSensor);
-        dbMetrics.when(() -> RocksDBMetrics.numberOfOpenIteratorsSensor(streamsMetrics, metricsContext))
-            .thenReturn(numberOfOpenIteratorsSensor);
+        dbMetrics.when(() -> RocksDBMetrics.iteratorsCreatedSensor(streamsMetrics, metricsContext))
+            .thenReturn(iteratorsCreatedSensor);
+        dbMetrics.when(() -> RocksDBMetrics.iteratorsDeletedSensor(streamsMetrics, metricsContext))
+            .thenReturn(iteratorsDeletedSensor);
         dbMetrics.when(() -> RocksDBMetrics.iteratorDurationSensor(streamsMetrics, metricsContext))
-                .thenReturn(iteratorDurationSensor);
+            .thenReturn(iteratorDurationSensor);
     }
 }
