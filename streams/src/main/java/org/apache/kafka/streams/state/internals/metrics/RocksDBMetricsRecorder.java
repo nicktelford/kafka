@@ -104,7 +104,8 @@ public class RocksDBMetricsRecorder {
     private Sensor compactionTimeMaxSensor;
     private Sensor numberOfOpenFilesSensor;
     private Sensor numberOfFileErrorsSensor;
-    private Sensor numberOfOpenIteratorsSensor;
+    private Sensor iteratorsCreatedSensor;
+    private Sensor iteratorsDeletedSensor;
     private Sensor iteratorDuration;
 
     private final Map<String, DbAndCacheAndStatistics> storeToValueProviders = new ConcurrentHashMap<>();
@@ -232,7 +233,8 @@ public class RocksDBMetricsRecorder {
         compactionTimeMaxSensor = RocksDBMetrics.compactionTimeMaxSensor(streamsMetrics, metricContext);
         numberOfOpenFilesSensor = RocksDBMetrics.numberOfOpenFilesSensor(streamsMetrics, metricContext);
         numberOfFileErrorsSensor = RocksDBMetrics.numberOfFileErrorsSensor(streamsMetrics, metricContext);
-        numberOfOpenIteratorsSensor = RocksDBMetrics.numberOfOpenIteratorsSensor(streamsMetrics, metricContext);
+        iteratorsCreatedSensor = RocksDBMetrics.iteratorsCreatedSensor(streamsMetrics, metricContext);
+        iteratorsDeletedSensor = RocksDBMetrics.iteratorsDeletedSensor(streamsMetrics, metricContext);
         iteratorDuration = RocksDBMetrics.iteratorDurationSensor(streamsMetrics, metricContext);
     }
 
@@ -470,8 +472,8 @@ public class RocksDBMetricsRecorder {
             numberOfOpenFiles += valueProviders.statistics.getAndResetTickerCount(TickerType.NO_FILE_OPENS)
                 - valueProviders.statistics.getAndResetTickerCount(TickerType.NO_FILE_CLOSES);
             numberOfFileErrors += valueProviders.statistics.getAndResetTickerCount(TickerType.NO_FILE_ERRORS);
-            iteratorsCreated += valueProviders.statistics.getTickerCount(TickerType.NO_ITERATOR_CREATED);
-            iteratorsDeleted += valueProviders.statistics.getTickerCount(TickerType.NO_ITERATOR_DELETED);
+            iteratorsCreated += valueProviders.statistics.getAndResetTickerCount(TickerType.NO_ITERATOR_CREATED);
+            iteratorsDeleted += valueProviders.statistics.getAndResetTickerCount(TickerType.NO_ITERATOR_DELETED);
             final HistogramData memtableFlushTimeData = valueProviders.statistics.getHistogramData(HistogramType.FLUSH_TIME);
             memtableFlushTimeSum += memtableFlushTimeData.getSum();
             memtableFlushTimeCount += memtableFlushTimeData.getCount();
@@ -502,7 +504,8 @@ public class RocksDBMetricsRecorder {
             compactionTimeMaxSensor.record(compactionTimeMax, now);
             numberOfOpenFilesSensor.record(numberOfOpenFiles, now);
             numberOfFileErrorsSensor.record(numberOfFileErrors, now);
-            numberOfOpenIteratorsSensor.record((double) (iteratorsCreated - iteratorsDeleted), now);
+            iteratorsCreatedSensor.record(iteratorsCreated, now);
+            iteratorsDeletedSensor.record(iteratorsDeleted, now);
         }
     }
 
