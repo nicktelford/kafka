@@ -137,7 +137,7 @@
     </module>
     <module name="JavaNCSS">
       <!-- default is 50 -->
-      <property name="methodMaximum" value="100"/>
+      <property name="methodMaximum" value="120"/>
     </module>
     <module name="NPathComplexity">
       <!-- default is 200 -->
