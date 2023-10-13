@@ -50,6 +50,10 @@ public class RocksDBMetrics {
     private static final String BLOCK_CACHE_DATA_HIT_RATIO = "block-cache-data-hit" + RATIO_SUFFIX;
     private static final String BLOCK_CACHE_INDEX_HIT_RATIO = "block-cache-index-hit" + RATIO_SUFFIX;
     private static final String BLOCK_CACHE_FILTER_HIT_RATIO = "block-cache-filter-hit" + RATIO_SUFFIX;
+    private static final String BLOCK_CACHE_INDEX_BYTES_INSERTED = "block-cache-index-bytes-inserted";
+    private static final String BLOCK_CACHE_FILTER_BYTES_INSERTED = "block-cache-index-bytes-inserted";
+    private static final String BLOCK_CACHE_INDEX_BYTES_EVICTED = "block-cache-index-bytes-evicted";
+    private static final String BLOCK_CACHE_FILTER_BYTES_EVICTED = "block-cache-index-bytes-evicted";
     private static final String BYTES_READ_DURING_COMPACTION = "bytes-read-compaction";
     private static final String BYTES_WRITTEN_DURING_COMPACTION = "bytes-written-compaction";
     private static final String COMPACTION_TIME = "compaction-time";
@@ -112,6 +116,14 @@ public class RocksDBMetrics {
         "Ratio of block cache hits for indexes relative to all lookups for indexes to the block cache";
     private static final String BLOCK_CACHE_FILTER_HIT_RATIO_DESCRIPTION =
         "Ratio of block cache hits for filters relative to all lookups for filters to the block cache";
+    private static final String BLOCK_CACHE_INDEX_BYTES_INSERTED_DESCRIPTION =
+        "Number of bytes of index blocks that have been inserted into the block cache";
+    private static final String BLOCK_CACHE_INDEX_BYTES_EVICTED_DESCRIPTION =
+        "Number of bytes of index blocks that have been evicted from the block cache";
+    private static final String BLOCK_CACHE_FILTER_BYTES_INSERTED_DESCRIPTION =
+        "Number of bytes of filter blocks that have been inserted into the block cache";
+    private static final String BLOCK_CACHE_FILTER_BYTES_EVICTED_DESCRIPTION =
+        "Number of bytes of filter blocks that have been evicted from the block cache";
     private static final String BYTES_READ_DURING_COMPACTION_DESCRIPTION =
         "Average number of bytes read per second during compaction";
     private static final String BYTES_WRITTEN_DURING_COMPACTION_DESCRIPTION =
@@ -394,6 +406,74 @@ public class RocksDBMetrics {
             ),
             BLOCK_CACHE_FILTER_HIT_RATIO,
             BLOCK_CACHE_FILTER_HIT_RATIO_DESCRIPTION
+        );
+        return sensor;
+    }
+
+    public static Sensor blockCacheIndexBytesInsertedSensor(final StreamsMetricsImpl streamsMetrics,
+                                                            final RocksDBMetricContext metricContext) {
+        final Sensor sensor = createSensor(streamsMetrics, metricContext, BLOCK_CACHE_INDEX_BYTES_INSERTED);
+        addSumMetricToSensor(
+                sensor,
+                STATE_STORE_LEVEL_GROUP,
+                streamsMetrics.storeLevelTagMap(
+                        metricContext.taskName(),
+                        metricContext.metricsScope(),
+                        metricContext.storeName()
+                ),
+                BLOCK_CACHE_INDEX_BYTES_INSERTED,
+                BLOCK_CACHE_INDEX_BYTES_INSERTED_DESCRIPTION
+        );
+        return sensor;
+    }
+
+    public static Sensor blockCacheIndexBytesEvictedSensor(final StreamsMetricsImpl streamsMetrics,
+                                                            final RocksDBMetricContext metricContext) {
+        final Sensor sensor = createSensor(streamsMetrics, metricContext, BLOCK_CACHE_INDEX_BYTES_EVICTED);
+        addSumMetricToSensor(
+                sensor,
+                STATE_STORE_LEVEL_GROUP,
+                streamsMetrics.storeLevelTagMap(
+                        metricContext.taskName(),
+                        metricContext.metricsScope(),
+                        metricContext.storeName()
+                ),
+                BLOCK_CACHE_INDEX_BYTES_EVICTED,
+                BLOCK_CACHE_INDEX_BYTES_EVICTED_DESCRIPTION
+        );
+        return sensor;
+    }
+
+    public static Sensor blockCacheFilterBytesInsertedSensor(final StreamsMetricsImpl streamsMetrics,
+                                                             final RocksDBMetricContext metricContext) {
+        final Sensor sensor = createSensor(streamsMetrics, metricContext, BLOCK_CACHE_FILTER_BYTES_INSERTED);
+        addSumMetricToSensor(
+                sensor,
+                STATE_STORE_LEVEL_GROUP,
+                streamsMetrics.storeLevelTagMap(
+                        metricContext.taskName(),
+                        metricContext.metricsScope(),
+                        metricContext.storeName()
+                ),
+                BLOCK_CACHE_FILTER_BYTES_INSERTED,
+                BLOCK_CACHE_FILTER_BYTES_INSERTED_DESCRIPTION
+        );
+        return sensor;
+    }
+
+    public static Sensor blockCacheFilterBytesEvictedSensor(final StreamsMetricsImpl streamsMetrics,
+                                                             final RocksDBMetricContext metricContext) {
+        final Sensor sensor = createSensor(streamsMetrics, metricContext, BLOCK_CACHE_FILTER_BYTES_EVICTED);
+        addSumMetricToSensor(
+                sensor,
+                STATE_STORE_LEVEL_GROUP,
+                streamsMetrics.storeLevelTagMap(
+                        metricContext.taskName(),
+                        metricContext.metricsScope(),
+                        metricContext.storeName()
+                ),
+                BLOCK_CACHE_FILTER_BYTES_EVICTED,
+                BLOCK_CACHE_FILTER_BYTES_EVICTED_DESCRIPTION
         );
         return sensor;
     }

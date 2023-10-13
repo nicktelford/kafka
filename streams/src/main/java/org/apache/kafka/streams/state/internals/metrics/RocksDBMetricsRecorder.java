@@ -97,6 +97,10 @@ public class RocksDBMetricsRecorder {
     private Sensor blockCacheDataHitRatioSensor;
     private Sensor blockCacheIndexHitRatioSensor;
     private Sensor blockCacheFilterHitRatioSensor;
+    private Sensor blockCacheIndexInsertedBytesSensor;
+    private Sensor blockCacheIndexEvictedBytesSensor;
+    private Sensor blockCacheFilterInsertedBytesSensor;
+    private Sensor blockCacheFilterEvictedBytesSensor;
     private Sensor bytesReadDuringCompactionSensor;
     private Sensor bytesWrittenDuringCompactionSensor;
     private Sensor compactionTimeAvgSensor;
@@ -225,6 +229,10 @@ public class RocksDBMetricsRecorder {
         blockCacheDataHitRatioSensor = RocksDBMetrics.blockCacheDataHitRatioSensor(streamsMetrics, metricContext);
         blockCacheIndexHitRatioSensor = RocksDBMetrics.blockCacheIndexHitRatioSensor(streamsMetrics, metricContext);
         blockCacheFilterHitRatioSensor = RocksDBMetrics.blockCacheFilterHitRatioSensor(streamsMetrics, metricContext);
+        blockCacheIndexInsertedBytesSensor = RocksDBMetrics.blockCacheIndexBytesInsertedSensor(streamsMetrics, metricContext);
+        blockCacheIndexEvictedBytesSensor = RocksDBMetrics.blockCacheIndexBytesEvictedSensor(streamsMetrics, metricContext);
+        blockCacheFilterInsertedBytesSensor = RocksDBMetrics.blockCacheFilterBytesInsertedSensor(streamsMetrics, metricContext);
+        blockCacheFilterEvictedBytesSensor = RocksDBMetrics.blockCacheFilterBytesEvictedSensor(streamsMetrics, metricContext);
         bytesWrittenDuringCompactionSensor =
             RocksDBMetrics.bytesWrittenDuringCompactionSensor(streamsMetrics, metricContext);
         bytesReadDuringCompactionSensor = RocksDBMetrics.bytesReadDuringCompactionSensor(streamsMetrics, metricContext);
@@ -434,6 +442,10 @@ public class RocksDBMetricsRecorder {
         long blockCacheIndexMisses = 0;
         long blockCacheFilterHits = 0;
         long blockCacheFilterMisses = 0;
+        long blockCacheIndexBytesInserted = 0;
+        long blockCacheIndexBytesEvicted = 0;
+        long blockCacheFilterBytesInserted = 0;
+        long blockCacheFilterBytesEvicted = 0;
         long writeStallDuration = 0;
         long bytesWrittenDuringCompaction = 0;
         long bytesReadDuringCompaction = 0;
@@ -466,6 +478,10 @@ public class RocksDBMetricsRecorder {
             blockCacheIndexMisses += valueProviders.statistics.getAndResetTickerCount(TickerType.BLOCK_CACHE_INDEX_MISS);
             blockCacheFilterHits += valueProviders.statistics.getAndResetTickerCount(TickerType.BLOCK_CACHE_FILTER_HIT);
             blockCacheFilterMisses += valueProviders.statistics.getAndResetTickerCount(TickerType.BLOCK_CACHE_FILTER_MISS);
+            blockCacheIndexBytesInserted += valueProviders.statistics.getAndResetTickerCount(TickerType.BLOCK_CACHE_INDEX_BYTES_INSERT);
+            blockCacheIndexBytesEvicted += valueProviders.statistics.getAndResetTickerCount(TickerType.BLOCK_CACHE_INDEX_BYTES_EVICT);
+            blockCacheFilterBytesInserted += valueProviders.statistics.getAndResetTickerCount(TickerType.BLOCK_CACHE_FILTER_BYTES_INSERT);
+            blockCacheFilterBytesEvicted += valueProviders.statistics.getAndResetTickerCount(TickerType.BLOCK_CACHE_FILTER_BYTES_EVICT);
             writeStallDuration += valueProviders.statistics.getAndResetTickerCount(TickerType.STALL_MICROS);
             bytesWrittenDuringCompaction += valueProviders.statistics.getAndResetTickerCount(TickerType.COMPACT_WRITE_BYTES);
             bytesReadDuringCompaction += valueProviders.statistics.getAndResetTickerCount(TickerType.COMPACT_READ_BYTES);
@@ -496,6 +512,10 @@ public class RocksDBMetricsRecorder {
             blockCacheDataHitRatioSensor.record(computeHitRatio(blockCacheDataHits, blockCacheDataMisses), now);
             blockCacheIndexHitRatioSensor.record(computeHitRatio(blockCacheIndexHits, blockCacheIndexMisses), now);
             blockCacheFilterHitRatioSensor.record(computeHitRatio(blockCacheFilterHits, blockCacheFilterMisses), now);
+            blockCacheIndexInsertedBytesSensor.record(blockCacheIndexBytesInserted, now);
+            blockCacheIndexEvictedBytesSensor.record(blockCacheIndexBytesEvicted, now);
+            blockCacheFilterInsertedBytesSensor.record(blockCacheFilterBytesInserted, now);
+            blockCacheFilterEvictedBytesSensor.record(blockCacheFilterBytesEvicted, now);
             writeStallDurationSensor.record(writeStallDuration, now);
             bytesWrittenDuringCompactionSensor.record(bytesWrittenDuringCompaction, now);
             bytesReadDuringCompactionSensor.record(bytesReadDuringCompaction, now);
