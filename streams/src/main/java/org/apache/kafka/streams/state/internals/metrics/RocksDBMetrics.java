@@ -51,9 +51,9 @@ public class RocksDBMetrics {
     private static final String BLOCK_CACHE_INDEX_HIT_RATIO = "block-cache-index-hit" + RATIO_SUFFIX;
     private static final String BLOCK_CACHE_FILTER_HIT_RATIO = "block-cache-filter-hit" + RATIO_SUFFIX;
     private static final String BLOCK_CACHE_INDEX_BYTES_INSERTED = "block-cache-index-bytes-inserted";
-    private static final String BLOCK_CACHE_FILTER_BYTES_INSERTED = "block-cache-index-bytes-inserted";
+    private static final String BLOCK_CACHE_FILTER_BYTES_INSERTED = "block-cache-filter-bytes-inserted";
     private static final String BLOCK_CACHE_INDEX_BYTES_EVICTED = "block-cache-index-bytes-evicted";
-    private static final String BLOCK_CACHE_FILTER_BYTES_EVICTED = "block-cache-index-bytes-evicted";
+    private static final String BLOCK_CACHE_FILTER_BYTES_EVICTED = "block-cache-filter-bytes-evicted";
     private static final String BYTES_READ_DURING_COMPACTION = "bytes-read-compaction";
     private static final String BYTES_WRITTEN_DURING_COMPACTION = "bytes-written-compaction";
     private static final String COMPACTION_TIME = "compaction-time";
