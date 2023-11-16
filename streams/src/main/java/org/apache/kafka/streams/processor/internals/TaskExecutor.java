@@ -18,6 +18,7 @@ package org.apache.kafka.streams.processor.internals;
 
 import org.apache.kafka.clients.consumer.CommitFailedException;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
+import org.apache.kafka.common.IsolationLevel;
 import org.apache.kafka.common.KafkaException;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.errors.TimeoutException;
@@ -26,12 +27,15 @@ import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.streams.errors.StreamsException;
 import org.apache.kafka.streams.errors.TaskCorruptedException;
 import org.apache.kafka.streams.errors.TaskMigratedException;
+import org.apache.kafka.streams.processor.TaskId;
 import org.slf4j.Logger;
 
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import static org.apache.kafka.streams.internals.StreamsConfigUtils.ProcessingMode.EXACTLY_ONCE_ALPHA;
@@ -173,11 +177,13 @@ public class TaskExecutor {
      * this is a possibility, prefer the {@link #commitTasksAndMaybeUpdateCommittableOffsets} instead.
      *
      * @throws TaskMigratedException   if committing offsets failed due to CommitFailedException (non-EOS)
-     * @throws TimeoutException        if committing offsets failed due to TimeoutException (non-EOS)
-     * @throws TaskCorruptedException  if committing offsets failed due to TimeoutException (EOS)
+     * @throws TimeoutException        if committing offsets failed due to TimeoutException (non-EOS or READ_UNCOMMITTED)
+     * @throws TaskCorruptedException  if committing offsets failed due to TimeoutException (EOS and READ_COMMITTED)
      */
     void commitOffsetsOrTransaction(final Map<Task, Map<TopicPartition, OffsetAndMetadata>> offsetsPerTask) {
         log.debug("Committing task offsets {}", offsetsPerTask.entrySet().stream().collect(Collectors.toMap(t -> t.getKey().id(), Entry::getValue))); // avoid logging actual Task objects
+
+        final Set<TaskId> corruptedTasks = new HashSet<>();
 
         if (executionMetadata.processingMode() == EXACTLY_ONCE_ALPHA) {
             for (final Task task : taskManager.activeTaskIterable()) {
@@ -192,7 +198,13 @@ public class TaskExecutor {
                             String.format("Committing task %s failed.", task.id()),
                             timeoutException
                         );
-                        throw timeoutException;
+                        if (executionMetadata.isolationLevel() == IsolationLevel.READ_UNCOMMITTED) {
+                            // under EOS and READ_UNCOMMITTED any error committing must wipe the local state to ensure
+                            // our stores are not inconsistent with the changelog
+                            corruptedTasks.add(task.id());
+                        } else {
+                            throw timeoutException;
+                        }
                     }
                 }
             }
@@ -214,7 +226,15 @@ public class TaskExecutor {
                                           .collect(Collectors.joining(", "))),
                         timeoutException
                     );
-                    throw timeoutException;
+                    if (executionMetadata.isolationLevel() == IsolationLevel.READ_UNCOMMITTED) {
+                        // under EOS and READ_UNCOMMITTED any error committing must wipe the local state to ensure
+                        // our stores are not inconsistent with the changelog
+                        offsetsPerTask
+                                .keySet()
+                                .forEach(task -> corruptedTasks.add(task.id()));
+                    } else {
+                        throw timeoutException;
+                    }
                 }
             }
         } else {
@@ -244,6 +264,10 @@ public class TaskExecutor {
                     throw new StreamsException("Error encountered committing offsets via consumer", error);
                 }
             }
+        }
+        if (!corruptedTasks.isEmpty()) {
+            // this can only happen under EOS and READ_UNCOMMITTED
+            throw new TaskCorruptedException(corruptedTasks);
         }
     }
 

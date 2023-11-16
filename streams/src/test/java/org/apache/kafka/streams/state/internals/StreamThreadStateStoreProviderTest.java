@@ -412,6 +412,7 @@ public class StreamThreadStateStoreProviderTest {
             taskId,
             Task.TaskType.ACTIVE,
             StreamsConfigUtils.eosEnabled(streamsConfig),
+            StreamsConfigUtils.readUncommittedIsolation(streamsConfig),
             logContext,
             stateDirectory,
             new StoreChangelogReader(

@@ -158,6 +158,7 @@ public class ProcessorStateManager implements StateManager {
 
     private final TaskId taskId;
     private final boolean eosEnabled;
+    private final boolean readUncommittedIsolation;
     private final ChangelogRegister changelogReader;
     private final Collection<TopicPartition> sourcePartitions;
     private final Map<String, String> storeToChangelogTopic;
@@ -186,6 +187,7 @@ public class ProcessorStateManager implements StateManager {
     public ProcessorStateManager(final TaskId taskId,
                                  final TaskType taskType,
                                  final boolean eosEnabled,
+                                 final boolean readUncommittedIsolation,
                                  final LogContext logContext,
                                  final StateDirectory stateDirectory,
                                  final ChangelogRegister changelogReader,
@@ -198,6 +200,7 @@ public class ProcessorStateManager implements StateManager {
         this.taskId = taskId;
         this.taskType = taskType;
         this.eosEnabled = eosEnabled;
+        this.readUncommittedIsolation = readUncommittedIsolation;
         this.changelogReader = changelogReader;
         this.sourcePartitions = sourcePartitions;
         this.stateUpdaterEnabled = stateUpdaterEnabled;
@@ -255,32 +258,18 @@ public class ProcessorStateManager implements StateManager {
                 } else if (store.offset() == null) {
 
                     // load managed offsets from store
-                    Long offset = null;
-                    if (store.stateStore.managesOffsets()) {
-                        offset = store.stateStore.getCommittedOffset(store.changelogPartition);
-                    }
+                    Long offset = loadOffsetFromStore(store);
 
                     // load offsets from .checkpoint file
-                    if (offset == null && loadedCheckpoints.containsKey(store.changelogPartition)) {
-                        offset = loadedCheckpoints.remove(store.changelogPartition);
-                    } else {
-                        // offset found in store, disregard offset from .checkpoint file
-                        loadedCheckpoints.remove(store.changelogPartition);
-                    }
+                    offset = loadOffsetFromCheckpointFile(offset, loadedCheckpoints, store);
 
                     // no offsets found for store, store is corrupt if not empty
-                    if (offset == null && eosEnabled && !storeDirIsEmpty) {
-                        throw new TaskCorruptedException(Collections.singleton(taskId));
-                    }
+                    throwCorruptIfNoOffsetAndNotEmpty(offset, storeDirIsEmpty);
 
-                    if (offset != null) {
-                        store.setOffset(changelogOffsetFromCheckpointedOffset(offset));
-                    }
+                    updateOffsetInMemory(offset, store);
 
-                    // ensure current checkpoint is persisted to disk before we begin processing
-                    if (store.stateStore.managesOffsets()) {
-                        store.stateStore.commit(Collections.singletonMap(store.changelogPartition, checkpointableOffsetFromChangelogOffset(offset)));
-                    }
+                    syncManagedOffsetInStore(offset, store);
+
                 }  else {
                     loadedCheckpoints.remove(store.changelogPartition);
                     log.debug("Skipping re-initialization of offset from checkpoint for recycled store {}",
@@ -292,7 +281,12 @@ public class ProcessorStateManager implements StateManager {
                 log.warn("Some loaded checkpoint offsets cannot find their corresponding state stores: {}", loadedCheckpoints);
             }
 
-            writeCheckpointFile(true);
+            if (eosEnabled && readUncommittedIsolation) {
+                // delete checkpoint file to ensure store is wiped on-crash
+                checkpointFile.delete();
+            } else {
+                writeCheckpointFile(true);
+            }
 
         } catch (final TaskCorruptedException e) {
             throw e;
@@ -300,6 +294,50 @@ public class ProcessorStateManager implements StateManager {
             // both IOException or runtime exception like number parsing can throw
             throw new ProcessorStateException(format("%sError loading and deleting checkpoint file when creating the state manager",
                 logPrefix), e);
+        }
+    }
+
+    private Long loadOffsetFromStore(final StateStoreMetadata store) {
+        if (store.stateStore.managesOffsets()) {
+            return store.stateStore.getCommittedOffset(store.changelogPartition);
+        }
+        return null;
+    }
+
+    private Long loadOffsetFromCheckpointFile(final Long existingOffset,
+                                              final Map<TopicPartition, Long> loadedCheckpoints,
+                                              final StateStoreMetadata store) {
+        // load offsets from .checkpoint file
+        if (existingOffset == null && loadedCheckpoints.containsKey(store.changelogPartition)) {
+            return loadedCheckpoints.remove(store.changelogPartition);
+        } else {
+            // offset found in store, disregard offset from .checkpoint file
+            loadedCheckpoints.remove(store.changelogPartition);
+        }
+        return existingOffset;
+    }
+
+    private void throwCorruptIfNoOffsetAndNotEmpty(final Long offset, final boolean storeDirIsEmpty) {
+        if (offset == null && eosEnabled && !storeDirIsEmpty) {
+            throw new TaskCorruptedException(Collections.singleton(taskId));
+        }
+    }
+
+    private void updateOffsetInMemory(final Long offset, final StateStoreMetadata store) {
+        if (offset != null) {
+            store.setOffset(changelogOffsetFromCheckpointedOffset(offset));
+        }
+    }
+
+    private void syncManagedOffsetInStore(final Long offset, final StateStoreMetadata store) {
+        if (store.stateStore.managesOffsets()) {
+            if (eosEnabled && readUncommittedIsolation) {
+                // clear changelog offset to ensure store is wiped on-crash
+                store.stateStore.commit(Collections.singletonMap(store.changelogPartition, null));
+            } else {
+                // ensure current checkpoint is persisted to disk before we begin processing
+                store.stateStore.commit(Collections.singletonMap(store.changelogPartition, checkpointableOffsetFromChangelogOffset(offset)));
+            }
         }
     }
 
@@ -488,7 +526,9 @@ public class ProcessorStateManager implements StateManager {
                 log.trace("Committing store {}", store.name());
                 try {
                     // if the changelog is corrupt, we need to ensure we delete any currently stored offset
-                    final Long checkpointOffset = metadata.corrupted ? null : checkpointableOffsetFromChangelogOffset(metadata.offset);
+                    // also, under EOS+READ_UNCOMMITTED, delete any offset to ensure store is wiped on-crash
+                    final Long checkpointOffset = !eosEnabled || !readUncommittedIsolation || metadata.corrupted ?
+                            null : checkpointableOffsetFromChangelogOffset(metadata.offset);
                     store.commit(metadata.changelogPartition != null && store.persistent() ?
                             Collections.singletonMap(metadata.changelogPartition, checkpointOffset) :
                             Collections.emptyMap()
@@ -517,7 +557,11 @@ public class ProcessorStateManager implements StateManager {
             }
 
             // update checkpoints for only stores that don't manage their own offsets
-            writeCheckpointFile(false);
+            // do not write checkpoints under EOS+READ_UNCOMMITTED
+            // this ensures that stores are still wiped on-crash in this case
+            if (!eosEnabled || !readUncommittedIsolation) {
+                writeCheckpointFile(false);
+            }
         }
 
         if (firstException != null) {

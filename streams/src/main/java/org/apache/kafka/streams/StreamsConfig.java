@@ -1427,15 +1427,9 @@ public class StreamsConfig extends AbstractConfig {
             configUpdates.put(COMMIT_INTERVAL_MS_CONFIG, EOS_DEFAULT_COMMIT_INTERVAL_MS);
         }
 
-        final String processingGuarantee = getString(PROCESSING_GUARANTEE_CONFIG);
-        final String isolationLevel = getString(DEFAULT_STATE_ISOLATION_LEVEL_CONFIG);
-        if (isolationLevel.equals(READ_UNCOMMITTED) && !processingGuarantee.equals(StreamsConfig.AT_LEAST_ONCE)) {
-            log.warn("{} of {} is not supported when {} is {}. Isolation level has been upgraded to {}",
-                    DEFAULT_STATE_ISOLATION_LEVEL_CONFIG,
-                    READ_UNCOMMITTED,
-                    PROCESSING_GUARANTEE_CONFIG,
-                    processingGuarantee,
-                    READ_COMMITTED);
+        if (StreamsConfigUtils.eosEnabled(this) && !originals().containsKey(DEFAULT_STATE_ISOLATION_LEVEL_CONFIG)) {
+            log.debug("Using {} default value of {} as exactly once is enabled.",
+                    DEFAULT_STATE_ISOLATION_LEVEL_CONFIG, READ_COMMITTED);
             configUpdates.put(DEFAULT_STATE_ISOLATION_LEVEL_CONFIG, READ_COMMITTED);
         }
 

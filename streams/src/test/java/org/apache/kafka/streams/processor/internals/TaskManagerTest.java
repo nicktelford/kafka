@@ -84,6 +84,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -4434,7 +4435,13 @@ public class TaskManagerTest {
         final StateMachineTask task01 = new StateMachineTask(taskId01, taskId01Partitions, true);
         task01.setCommittableOffsetsAndMetadata(offsetsT01);
         final StateMachineTask task02 = new StateMachineTask(taskId02, taskId02Partitions, true);
-        when(tasks.allTasks()).thenReturn(mkSet(task00, task01, task02));
+        // we need to guarantee the order of Tasks in the Set to ensure they are committed in the same order every time
+        // under EOS Alpha, we will stop committing Tasks as soon as one of them encounters a TimeoutException
+        final Set<Task> allTasks = new TreeSet<>((o1, o2) -> o2.id().compareTo(o1.id()));
+        allTasks.add(task00);
+        allTasks.add(task01);
+        allTasks.add(task02);
+        when(tasks.allTasks()).thenReturn(allTasks);
         
         expect(consumer.groupMetadata()).andStubReturn(null);
         replay(consumer);
@@ -4442,7 +4449,7 @@ public class TaskManagerTest {
         task00.setCommitNeeded();
         task01.setCommitNeeded();
 
-        taskManager.commit(mkSet(task00, task01, task02));
+        taskManager.commit(allTasks);
     }
 
     @Test

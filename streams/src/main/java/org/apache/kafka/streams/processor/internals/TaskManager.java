@@ -1001,6 +1001,13 @@ public class TaskManager {
             // commitAndFillInConsumedOffsetsAndMetadataPerTaskMap() to make sure we don't skip the
             // offset commit because we are in a rebalance
             taskExecutor.commitOffsetsOrTransaction(consumedOffsetsPerTask);
+        } catch (final TaskCorruptedException e) {
+            log.warn("Some tasks were corrupted when trying to commit offsets, these will be cleaned and revived: {}",
+                    e.corruptedTasks());
+
+            // If we hit a TaskCorruptedException it must be EOS and READ_UNCOMMITTED, just handle the cleanup for those corrupted tasks right here
+            dirtyTasks.addAll(tasks.tasks(e.corruptedTasks()));
+            closeDirtyAndRevive(dirtyTasks, true);
         } catch (final TimeoutException e) {
             log.warn("Timed out while trying to commit all tasks during revocation, these will be cleaned and revived");
 

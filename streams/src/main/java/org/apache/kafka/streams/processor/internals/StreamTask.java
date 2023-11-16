@@ -75,6 +75,7 @@ public class StreamTask extends AbstractTask implements ProcessorNodePunctuator,
     // there's still an optimization that requires this info to be
     // leaked into this class, which is to checkpoint after committing if EOS is not enabled.
     private final boolean eosEnabled;
+    private final boolean readUncommittedIsolation;
 
     private final int maxBufferedSize;
     private final PartitionGroup partitionGroup;
@@ -142,6 +143,7 @@ public class StreamTask extends AbstractTask implements ProcessorNodePunctuator,
         this.time = time;
         this.recordCollector = recordCollector;
         this.eosEnabled = config.eosEnabled;
+        this.readUncommittedIsolation = config.readUncommittedIsolation;
 
         final String threadId = Thread.currentThread().getName();
         this.streamsMetrics = streamsMetrics;
@@ -740,6 +742,12 @@ public class StreamTask extends AbstractTask implements ProcessorNodePunctuator,
 
             record = null;
         } catch (final TimeoutException timeoutException) {
+            if (eosEnabled && readUncommittedIsolation) {
+                // under EOS and READ_UNCOMMITTED, we must wipe the StateStore whenever an error occurs to prevent
+                // the store becoming inconsistent with the changelog
+                record = null;
+                throw new TaskCorruptedException(Collections.singleton(id));
+            }
             throw timeoutException;
         } catch (final StreamsException exception) {
             record = null;

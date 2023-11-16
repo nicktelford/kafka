@@ -486,6 +486,7 @@ public class TopologyTestDriver implements Closeable {
                 TASK_ID,
                 Task.TaskType.ACTIVE,
                 StreamsConfig.EXACTLY_ONCE.equals(streamsConfig.getString(StreamsConfig.PROCESSING_GUARANTEE_CONFIG)),
+                StreamsConfig.READ_UNCOMMITTED.equals(streamsConfig.getString(StreamsConfig.DEFAULT_STATE_ISOLATION_LEVEL_CONFIG)),
                 logContext,
                 stateDirectory,
                 new MockChangelogRegister(),
