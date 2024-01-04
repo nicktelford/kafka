@@ -88,6 +88,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -131,6 +132,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
@@ -250,7 +252,8 @@ public class TaskManagerTest {
             adminClient,
             stateDirectory,
             stateUpdaterEnabled ? stateUpdater : null,
-            processingThreadsEnabled ? schedulingTaskManager : null
+            processingThreadsEnabled ? schedulingTaskManager : null,
+            -1L
         );
         taskManager.setMainConsumer(consumer);
         return taskManager;
@@ -2880,7 +2883,7 @@ public class TaskManagerTest {
 
         assertThat(uncorruptedActiveTask.commitPrepared, is(true));
         assertThat(uncorruptedActiveTask.commitNeeded, is(false));
-        assertThat(uncorruptedActiveTask.commitCompleted, is(true)); //if corrupted due to timeout on commit, should enforce checkpoint with corrupted tasks removed
+        assertThat(uncorruptedActiveTask.commitCompleted, is(false)); //if not corrupted, we should close dirty without committing
         assertThat(corruptedActiveTask.commitPrepared, is(true));
         assertThat(corruptedActiveTask.commitNeeded, is(false));
         assertThat(corruptedActiveTask.commitCompleted, is(true)); //if corrupted, should enforce checkpoint with corrupted tasks removed
@@ -2888,10 +2891,11 @@ public class TaskManagerTest {
         assertThat(corruptedActiveTask.state(), is(Task.State.CREATED));
         assertThat(uncorruptedActiveTask.state(), is(Task.State.CREATED));
         assertThat(corruptedTaskChangelogMarkedAsCorrupted.get(), is(true));
-        assertThat(uncorruptedTaskChangelogMarkedAsCorrupted.get(), is(true));
+        assertThat(uncorruptedTaskChangelogMarkedAsCorrupted.get(), is(false));
         verify(consumer);
         Mockito.verify(stateManager).markChangelogAsCorrupted(taskId00ChangelogPartitions);
-        Mockito.verify(stateManager).markChangelogAsCorrupted(taskId01ChangelogPartitions);
+        Mockito.verify(stateManager, atLeastOnce()).transitionTaskState(any());
+        Mockito.verifyNoMoreInteractions(stateManager);
     }
 
     @Test
@@ -3010,12 +3014,12 @@ public class TaskManagerTest {
 
         taskManager.handleRevocation(taskId00Partitions);
 
-        assertThat(unrevokedTaskChangelogMarkedAsCorrupted.get(), is(true));
+        assertThat(unrevokedTaskChangelogMarkedAsCorrupted.get(), is(false));
         assertThat(revokedActiveTask.state(), is(State.SUSPENDED));
         assertThat(unrevokedActiveTask.state(), is(State.CREATED));
         assertThat(unrevokedActiveTaskWithoutCommitNeeded.state(), is(State.RUNNING));
-        Mockito.verify(stateManager).markChangelogAsCorrupted(taskId00ChangelogPartitions);
-        Mockito.verify(stateManager).markChangelogAsCorrupted(taskId01ChangelogPartitions);
+        Mockito.verify(stateManager, atLeastOnce()).transitionTaskState(any());
+        Mockito.verifyNoMoreInteractions(stateManager);
     }
 
     @Test
@@ -4912,26 +4916,26 @@ public class TaskManagerTest {
         final StateMachineTask task01 = new StateMachineTask(taskId01, taskId01Partitions, true, stateManager);
         task01.setCommittableOffsetsAndMetadata(offsetsT01);
         final StateMachineTask task02 = new StateMachineTask(taskId02, taskId02Partitions, true, stateManager);
-        when(tasks.allTasks()).thenReturn(mkSet(task00, task01, task02));
-        
+
+        // we need to guarantee the order of Tasks in the Set to ensure they are committed in the same order every time
+        // under EOS Alpha, we will stop committing Tasks as soon as one of them encounters a TimeoutException
+        final Set<Task> allTasks = new TreeSet<>((o1, o2) -> o2.id().compareTo(o1.id()));
+        allTasks.add(task00);
+        allTasks.add(task01);
+        allTasks.add(task02);
+        when(tasks.allTasks()).thenReturn(allTasks);
+
         expect(consumer.groupMetadata()).andStubReturn(null);
         replay(consumer);
 
         task00.setCommitNeeded();
         task01.setCommitNeeded();
 
-        final TaskCorruptedException exception = assertThrows(
-            TaskCorruptedException.class,
-            () -> taskManager.commit(mkSet(task00, task01, task02))
-        );
-        assertThat(
-            exception.corruptedTasks(),
-            equalTo(Collections.singleton(taskId00))
-        );
+        taskManager.commit(allTasks);
     }
 
     @Test
-    public void shouldThrowTaskCorruptedExceptionForTimeoutExceptionOnCommitWithEosV2() {
+    public void shouldNotThrowTaskCorruptedExceptionForTimeoutExceptionOnCommitWithEosV2() {
         final TaskManager taskManager = setUpTaskManager(ProcessingMode.EXACTLY_ONCE_V2, false);
 
         final StreamsProducer producer = mock(StreamsProducer.class);
@@ -4956,14 +4960,7 @@ public class TaskManagerTest {
         task00.setCommitNeeded();
         task01.setCommitNeeded();
 
-        final TaskCorruptedException exception = assertThrows(
-            TaskCorruptedException.class,
-            () -> taskManager.commit(mkSet(task00, task01, task02))
-        );
-        assertThat(
-            exception.corruptedTasks(),
-            equalTo(mkSet(taskId00, taskId01))
-        );
+        taskManager.commit(mkSet(task00, task01, task02));
     }
 
     @Test
