@@ -232,7 +232,7 @@ public class GlobalStateTaskTest {
         globalStateTask.flushState();
 
         assertEquals(expectedOffsets, stateMgr.changelogOffsets());
-        assertTrue(stateMgr.flushed);
+        assertTrue(stateMgr.committed);
     }
 
     @Test
@@ -250,18 +250,6 @@ public class GlobalStateTaskTest {
     }
 
     @Test
-    public void shouldNotCheckpointIfNotReceivedEnoughRecords() {
-        globalStateTask.initialize();
-        globalStateTask.update(record(topic1, 1, currentOffsetT1 + 9000L, "foo".getBytes(), "foo".getBytes()));
-        time.sleep(flushInterval); // flush interval elapsed
-        globalStateTask.maybeCheckpoint();
-
-        assertEquals(offsets, stateMgr.changelogOffsets());
-        assertFalse(stateMgr.flushed);
-        assertFalse(stateMgr.checkpointWritten);
-    }
-
-    @Test
     public void shouldNotCheckpointWhenFlushIntervalHasNotLapsed() {
         globalStateTask.initialize();
 
@@ -272,7 +260,7 @@ public class GlobalStateTaskTest {
         globalStateTask.maybeCheckpoint();
 
         assertEquals(offsets, stateMgr.changelogOffsets());
-        assertFalse(stateMgr.flushed);
+        assertFalse(stateMgr.committed);
         assertFalse(stateMgr.checkpointWritten);
     }
 
@@ -284,22 +272,18 @@ public class GlobalStateTaskTest {
 
         globalStateTask.initialize();
 
-        time.sleep(flushInterval); // flush interval elapsed
+        time.sleep(flushInterval); // commit interval elapsed
 
-        // 10000 records received since last flush => do not flush
-        globalStateTask.update(record(topic1, 1, currentOffsetT1 + 9999L, "foo".getBytes(), "foo".getBytes()));
-        globalStateTask.maybeCheckpoint();
-
-        assertEquals(offsets, stateMgr.changelogOffsets());
-        assertFalse(stateMgr.flushed);
-        assertFalse(stateMgr.checkpointWritten);
-
-        // 1 more record received => triggers the flush
+        // 10000 records received since last commit => commit
         globalStateTask.update(record(topic1, 1, currentOffsetT1 + 10000L, "foo".getBytes(), "foo".getBytes()));
         globalStateTask.maybeCheckpoint();
 
+        assertEquals(offsets, stateMgr.changelogOffsets());
+        assertTrue(stateMgr.committed);
+        assertTrue(stateMgr.checkpointWritten);
+
         assertEquals(expectedOffsets, stateMgr.changelogOffsets());
-        assertTrue(stateMgr.flushed);
+        assertTrue(stateMgr.committed);
         assertTrue(stateMgr.checkpointWritten);
     }
 
@@ -322,7 +306,7 @@ public class GlobalStateTaskTest {
         globalStateTask.maybeCheckpoint();
 
         assertEquals(expectedOffsets, stateMgr.changelogOffsets());
-        assertTrue(stateMgr.flushed);
+        assertTrue(stateMgr.committed);
         assertTrue(stateMgr.checkpointWritten);
     }
 

@@ -55,7 +55,7 @@ import static org.apache.kafka.streams.processor.internals.GlobalStreamThread.St
  * This is the thread responsible for keeping all Global State Stores updated.
  * It delegates most of the responsibility to the internal class StateConsumer
  */
-public class GlobalStreamThread extends Thread {
+public class GlobalStreamThread extends Thread implements ProcessingThread {
 
     private final Logger log;
     private final LogContext logContext;

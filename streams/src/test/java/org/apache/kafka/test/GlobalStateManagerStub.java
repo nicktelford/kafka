@@ -35,7 +35,7 @@ public class GlobalStateManagerStub implements GlobalStateManager {
     private final File baseDirectory;
     public boolean initialized;
     public boolean closed;
-    public boolean flushed;
+    public boolean committed;
     public boolean checkpointWritten;
 
     public GlobalStateManagerStub(final Set<String> storeNames,
@@ -66,8 +66,8 @@ public class GlobalStateManagerStub implements GlobalStateManager {
                               final CommitCallback checkpoint) {}
 
     @Override
-    public void flush() {
-        flushed = true;
+    public void commit() {
+        committed = checkpointWritten = true;
     }
 
     @Override
@@ -78,11 +78,6 @@ public class GlobalStateManagerStub implements GlobalStateManager {
     @Override
     public void updateChangelogOffsets(final Map<TopicPartition, Long> writtenOffsets) {
         this.offsets.putAll(writtenOffsets);
-    }
-
-    @Override
-    public void checkpoint() {
-        checkpointWritten = true;
     }
 
     @Override
@@ -108,5 +103,10 @@ public class GlobalStateManagerStub implements GlobalStateManager {
     @Override
     public String changelogFor(final String storeName) {
         return null;
+    }
+
+    @Override
+    public long approximateNumUncommittedBytes() {
+        return 0;
     }
 }

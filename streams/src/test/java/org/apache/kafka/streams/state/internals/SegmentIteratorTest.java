@@ -46,15 +46,13 @@ public class SegmentIteratorTest {
 
     private final RocksDBMetricsRecorder rocksDBMetricsRecorder =
         new RocksDBMetricsRecorder("metrics-scope", "store-name");
-    private final KeyValueSegment segmentOne =
-        new KeyValueSegment("one", "one", 0, Position.emptyPosition(), rocksDBMetricsRecorder);
-    private final KeyValueSegment segmentTwo =
-        new KeyValueSegment("two", "window", 1, Position.emptyPosition(), rocksDBMetricsRecorder);
+    private KeyValueSegment segmentOne = null;
+    private KeyValueSegment segmentTwo = null;
     private final HasNextCondition hasNextCondition = Iterator::hasNext;
 
     private SegmentIterator<KeyValueSegment> iterator = null;
 
-    @SuppressWarnings("rawtypes")
+    @SuppressWarnings({"rawtypes"})
     @Before
     public void before() {
         final InternalMockProcessorContext context = new InternalMockProcessorContext<>(
@@ -66,6 +64,8 @@ public class SegmentIteratorTest {
                 new LogContext("testCache "),
                 0,
                 new MockStreamsMetrics(new Metrics())));
+        segmentOne = new KeyValueSegment("one", "one", 0, Position.emptyPosition(), context, rocksDBMetricsRecorder);
+        segmentTwo = new KeyValueSegment("two", "window", 1, Position.emptyPosition(), context, rocksDBMetricsRecorder);
         segmentOne.init((StateStoreContext) context, segmentOne);
         segmentTwo.init((StateStoreContext) context, segmentTwo);
         segmentOne.put(Bytes.wrap("a".getBytes()), "1".getBytes());

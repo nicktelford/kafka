@@ -55,7 +55,7 @@ public class RocksDBTimeOrderedKeyValueBytesStore extends AbstractRocksDBTimeOrd
             observedStreamTime = Math.max(observedStreamTime, timestamp);
             minTimestamp = Math.min(minTimestamp, timestamp);
             final long segmentId = segments.segmentId(timestamp);
-            final KeyValueSegment segment = segments.getOrCreateSegmentIfLive(segmentId, context, observedStreamTime);
+            final KeyValueSegment segment = segments.getOrCreateSegmentIfLive(segmentId, stateStoreContext, observedStreamTime);
             if (segment != null) {
                 //null segment is if it has expired, so  we don't want those records
                 ChangelogRecordDeserializationHelper.applyChecksAndUpdatePosition(
@@ -68,6 +68,7 @@ public class RocksDBTimeOrderedKeyValueBytesStore extends AbstractRocksDBTimeOrd
 
                     final byte[] baseKey = TimeFirstWindowKeySchema.fromNonPrefixWindowKey(record.key());
                     segment.addToBatch(new KeyValue<>(baseKey, record.value()), batch);
+                    segment.addPositionOffsetsToBatch(position, batch);
                 } catch (final RocksDBException e) {
                     throw new ProcessorStateException("Error restoring batch to store " + name(), e);
                 }

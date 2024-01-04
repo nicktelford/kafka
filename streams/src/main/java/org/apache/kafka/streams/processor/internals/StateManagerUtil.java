@@ -17,10 +17,8 @@
 package org.apache.kafka.streams.processor.internals;
 
 import java.io.IOException;
-import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
-import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.utils.Utils;
 import org.apache.kafka.streams.errors.LockException;
 import org.apache.kafka.streams.errors.ProcessorStateException;
@@ -52,29 +50,6 @@ final class StateManagerUtil {
         // should not prepend timestamp when restoring records for versioned store, as
         // timestamp is used separately during put() process for restore of versioned stores
         return (isTimestamped(store) && !isVersioned(store)) ? rawValueToTimestampedValue() : identity();
-    }
-
-    static boolean checkpointNeeded(final boolean enforceCheckpoint,
-                                    final Map<TopicPartition, Long> oldOffsetSnapshot,
-                                    final Map<TopicPartition, Long> newOffsetSnapshot) {
-        // we should always have the old snapshot post completing the register state stores;
-        // if it is null it means the registration is not done and hence we should not overwrite the checkpoint
-        if (oldOffsetSnapshot == null) {
-            return false;
-        }
-
-        if (enforceCheckpoint)
-            return true;
-
-        // we can checkpoint if the difference between the current and the previous snapshot is large enough
-        long totalOffsetDelta = 0L;
-        for (final Map.Entry<TopicPartition, Long> entry : newOffsetSnapshot.entrySet()) {
-            totalOffsetDelta += entry.getValue() - oldOffsetSnapshot.getOrDefault(entry.getKey(), 0L);
-        }
-
-        // when enforcing checkpoint is required, we should overwrite the checkpoint if it is different from the old one;
-        // otherwise, we only overwrite the checkpoint if it is largely different from the old one
-        return totalOffsetDelta > OFFSET_DELTA_THRESHOLD_FOR_CHECKPOINT;
     }
 
     /**
@@ -115,12 +90,14 @@ final class StateManagerUtil {
     static void closeStateManager(final Logger log,
                                   final String logPrefix,
                                   final boolean closeClean,
-                                  final boolean eosEnabled,
                                   final ProcessorStateManager stateMgr,
                                   final StateDirectory stateDirectory,
                                   final TaskType taskType) {
-        // if EOS is enabled, wipe out the whole state store for unclean close since it is now invalid
-        final boolean wipeStateStore = !closeClean && eosEnabled;
+        // if any stores are marked as "corrupted", we should wipe out the state for this Task
+        // note: this is done irrespective of processing mode, as this should only be the case when a TaskCorruptedException
+        // is raised, which only occurs when the offsets for the store either can't be determined, or don't correspond with
+        // the changelogs
+        final boolean wipeStateStore = !closeClean && stateMgr.hasCorruptedStores();
 
         final TaskId id = stateMgr.taskId();
         log.trace("Closing state manager for {} task {}", taskType, id);

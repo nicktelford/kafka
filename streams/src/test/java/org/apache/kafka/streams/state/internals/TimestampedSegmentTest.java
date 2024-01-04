@@ -19,7 +19,7 @@ package org.apache.kafka.streams.state.internals;
 import org.apache.kafka.common.metrics.Metrics;
 import org.apache.kafka.common.utils.MockTime;
 import org.apache.kafka.streams.StreamsConfig;
-import org.apache.kafka.streams.processor.ProcessorContext;
+import org.apache.kafka.streams.processor.StateStoreContext;
 import org.apache.kafka.streams.processor.TaskId;
 import org.apache.kafka.streams.processor.internals.metrics.StreamsMetricsImpl;
 import org.apache.kafka.streams.query.Position;
@@ -61,14 +61,15 @@ public class TimestampedSegmentTest {
 
     @Test
     public void shouldDeleteStateDirectoryOnDestroy() throws Exception {
-        final TimestampedSegment segment = new TimestampedSegment("segment", "window", 0L, Position.emptyPosition(), metricsRecorder);
+        final StateStoreContext mockContext = mock(StateStoreContext.class);
+        final TimestampedSegment segment = new TimestampedSegment("segment", "window", 0L, Position.emptyPosition(), mockContext, metricsRecorder);
         final String directoryPath = TestUtils.tempDirectory().getAbsolutePath();
         final File directory = new File(directoryPath);
 
-        final ProcessorContext mockContext = mock(ProcessorContext.class);
         when(mockContext.appConfigs()).thenReturn(mkMap(mkEntry(METRICS_RECORDING_LEVEL_CONFIG, "INFO")));
         when(mockContext.stateDir()).thenReturn(directory);
 
+        segment.context = mockContext;
         segment.openDB(mockContext.appConfigs(), mockContext.stateDir());
 
         assertTrue(new File(directoryPath, "window").exists());
@@ -83,11 +84,12 @@ public class TimestampedSegmentTest {
 
     @Test
     public void shouldBeEqualIfIdIsEqual() {
-        final TimestampedSegment segment = new TimestampedSegment("anyName", "anyName", 0L, Position.emptyPosition(), metricsRecorder);
+        final StateStoreContext mockContext = mock(StateStoreContext.class);
+        final TimestampedSegment segment = new TimestampedSegment("anyName", "anyName", 0L, Position.emptyPosition(), mockContext, metricsRecorder);
         final TimestampedSegment segmentSameId =
-            new TimestampedSegment("someOtherName", "someOtherName", 0L, Position.emptyPosition(), metricsRecorder);
+            new TimestampedSegment("someOtherName", "someOtherName", 0L, Position.emptyPosition(), mockContext, metricsRecorder);
         final TimestampedSegment segmentDifferentId =
-            new TimestampedSegment("anyName", "anyName", 1L, Position.emptyPosition(), metricsRecorder);
+            new TimestampedSegment("anyName", "anyName", 1L, Position.emptyPosition(), mockContext, metricsRecorder);
 
         assertThat(segment, equalTo(segment));
         assertThat(segment, equalTo(segmentSameId));
@@ -102,11 +104,12 @@ public class TimestampedSegmentTest {
 
     @Test
     public void shouldHashOnSegmentIdOnly() {
-        final TimestampedSegment segment = new TimestampedSegment("anyName", "anyName", 0L, Position.emptyPosition(), metricsRecorder);
+        final StateStoreContext mockContext = mock(StateStoreContext.class);
+        final TimestampedSegment segment = new TimestampedSegment("anyName", "anyName", 0L, Position.emptyPosition(), mockContext, metricsRecorder);
         final TimestampedSegment segmentSameId =
-            new TimestampedSegment("someOtherName", "someOtherName", 0L, Position.emptyPosition(), metricsRecorder);
+            new TimestampedSegment("someOtherName", "someOtherName", 0L, Position.emptyPosition(), mockContext, metricsRecorder);
         final TimestampedSegment segmentDifferentId =
-            new TimestampedSegment("anyName", "anyName", 1L, Position.emptyPosition(), metricsRecorder);
+            new TimestampedSegment("anyName", "anyName", 1L, Position.emptyPosition(), mockContext, metricsRecorder);
 
         final Set<TimestampedSegment> set = new HashSet<>();
         assertTrue(set.add(segment));
@@ -120,9 +123,10 @@ public class TimestampedSegmentTest {
 
     @Test
     public void shouldCompareSegmentIdOnly() {
-        final TimestampedSegment segment1 = new TimestampedSegment("a", "C", 50L, Position.emptyPosition(), metricsRecorder);
-        final TimestampedSegment segment2 = new TimestampedSegment("b", "B", 100L, Position.emptyPosition(), metricsRecorder);
-        final TimestampedSegment segment3 = new TimestampedSegment("c", "A", 0L, Position.emptyPosition(), metricsRecorder);
+        final StateStoreContext mockContext = mock(StateStoreContext.class);
+        final TimestampedSegment segment1 = new TimestampedSegment("a", "C", 50L, Position.emptyPosition(), mockContext, metricsRecorder);
+        final TimestampedSegment segment2 = new TimestampedSegment("b", "B", 100L, Position.emptyPosition(), mockContext, metricsRecorder);
+        final TimestampedSegment segment3 = new TimestampedSegment("c", "A", 0L, Position.emptyPosition(), mockContext, metricsRecorder);
 
         assertThat(segment1.compareTo(segment1), equalTo(0));
         assertThat(segment1.compareTo(segment2), equalTo(-1));

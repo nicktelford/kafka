@@ -16,12 +16,17 @@
  */
 package org.apache.kafka.streams.state.internals;
 
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.utils.Bytes;
+import org.apache.kafka.streams.query.Position;
 import org.apache.kafka.streams.state.KeyValueStore;
 
 import java.io.IOException;
+import java.util.Map;
 
 public interface Segment extends KeyValueStore<Bytes, byte[]>, BatchWritingStore {
+
+    void commit(Map<TopicPartition, Long> changelogOffsets, Position position);
 
     void destroy() throws IOException;
 

@@ -131,9 +131,8 @@ public class GlobalStateUpdateTask implements GlobalStateMaintainer {
         // this could theoretically throw a ProcessorStateException caused by a ProducerFencedException,
         // but in practice this shouldn't happen for global state update tasks, since the stores are not
         // logged and there are no downstream operators after global stores.
-        stateMgr.flush();
         stateMgr.updateChangelogOffsets(offsets);
-        stateMgr.checkpoint();
+        stateMgr.commit();
     }
 
     public void close(final boolean wipeStateStore) throws IOException {
@@ -163,7 +162,7 @@ public class GlobalStateUpdateTask implements GlobalStateMaintainer {
     @Override
     public void maybeCheckpoint() {
         final long now = time.milliseconds();
-        if (now - flushInterval >= lastFlush && StateManagerUtil.checkpointNeeded(false, stateMgr.changelogOffsets(), offsets)) {
+        if (now - flushInterval >= lastFlush) {
             flushState();
             lastFlush = now;
         }
