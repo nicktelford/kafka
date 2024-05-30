@@ -541,7 +541,7 @@ public class ProcessorStateManager implements StateManager {
                 final StateStore store = metadata.stateStore;
                 log.trace("Flushing store {}", store.name());
                 try {
-                    store.flush();
+                    store.commit(Collections.emptyMap());
                 } catch (final RuntimeException exception) {
                     if (firstException == null) {
                         // do NOT wrap the error if it is actually caused by Streams itself
@@ -572,7 +572,7 @@ public class ProcessorStateManager implements StateManager {
                 try {
                     // buffer should be flushed to send all records to changelog
                     if (store instanceof TimeOrderedKeyValueBuffer) {
-                        store.flush();
+                        store.commit(Collections.emptyMap());
                     } else if (store instanceof CachedStateStore) {
                         ((CachedStateStore) store).flushCache();
                     }

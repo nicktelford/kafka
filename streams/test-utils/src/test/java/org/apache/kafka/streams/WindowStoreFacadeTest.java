@@ -26,8 +26,11 @@ import org.apache.kafka.streams.state.ValueAndTimestamp;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.Collections;
+
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -62,9 +65,9 @@ public class WindowStoreFacadeTest {
     }
 
     @Test
-    public void shouldForwardFlush() {
-        windowStoreFacade.flush();
-        verify(mockedWindowTimestampStore).flush();
+    public void shouldForwardCommit() {
+        windowStoreFacade.commit(Collections.emptyMap());
+        verify(mockedWindowTimestampStore).commit(anyMap());
     }
 
     @Test

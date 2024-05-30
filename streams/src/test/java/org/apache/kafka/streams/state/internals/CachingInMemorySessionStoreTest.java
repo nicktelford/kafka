@@ -168,7 +168,7 @@ public class CachingInMemorySessionStoreTest {
         assertEquals(Position.emptyPosition(), cachingStore.getPosition());
         assertEquals(Position.emptyPosition(), underlyingStore.getPosition());
 
-        cachingStore.flush();
+        cachingStore.flushCache();
 
         assertEquals(
             Position.fromMap(mkMap(mkEntry("", mkMap(mkEntry(0, 2L))))),
@@ -474,7 +474,7 @@ public class CachingInMemorySessionStoreTest {
         cachingStore.put(a1, "1".getBytes());
         cachingStore.put(a2, "2".getBytes());
         cachingStore.put(a3, "3".getBytes());
-        cachingStore.flush();
+        cachingStore.flushCache();
         cachingStore.put(a4, "4".getBytes());
         cachingStore.put(a5, "5".getBytes());
         cachingStore.put(a6, "6".getBytes());
@@ -501,7 +501,7 @@ public class CachingInMemorySessionStoreTest {
         cachingStore.put(a1, "1".getBytes());
         cachingStore.put(a2, "2".getBytes());
         cachingStore.put(a3, "3".getBytes());
-        cachingStore.flush();
+        cachingStore.flushCache();
         cachingStore.put(a4, "4".getBytes());
         cachingStore.put(a5, "5".getBytes());
         cachingStore.put(a6, "6".getBytes());
@@ -570,7 +570,7 @@ public class CachingInMemorySessionStoreTest {
     }
 
     @Test
-    public void shouldForwardChangedValuesDuringFlush() {
+    public void shouldForwardChangedValuesDuringCommit() {
         final Windowed<Bytes> a = new Windowed<>(keyA, new SessionWindow(2, 4));
         final Windowed<Bytes> b = new Windowed<>(keyA, new SessionWindow(1, 2));
         final Windowed<String> aDeserialized = new Windowed<>("a", new SessionWindow(2, 4));
@@ -582,7 +582,7 @@ public class CachingInMemorySessionStoreTest {
         cachingStore.setFlushListener(flushListener, true);
 
         cachingStore.put(b, "1".getBytes());
-        cachingStore.flush();
+        cachingStore.commit(Collections.emptyMap());
 
         assertEquals(
             Collections.singletonList(
@@ -595,7 +595,7 @@ public class CachingInMemorySessionStoreTest {
         flushListener.forwarded.clear();
 
         cachingStore.put(a, "1".getBytes());
-        cachingStore.flush();
+        cachingStore.commit(Collections.emptyMap());
 
         assertEquals(
             Collections.singletonList(
@@ -608,7 +608,7 @@ public class CachingInMemorySessionStoreTest {
         flushListener.forwarded.clear();
 
         cachingStore.put(a, "2".getBytes());
-        cachingStore.flush();
+        cachingStore.commit(Collections.emptyMap());
 
         assertEquals(
             Collections.singletonList(
@@ -621,7 +621,7 @@ public class CachingInMemorySessionStoreTest {
         flushListener.forwarded.clear();
 
         cachingStore.remove(a);
-        cachingStore.flush();
+        cachingStore.commit(Collections.emptyMap());
 
         assertEquals(
             Collections.singletonList(
@@ -636,7 +636,7 @@ public class CachingInMemorySessionStoreTest {
         cachingStore.put(a, "1".getBytes());
         cachingStore.put(a, "2".getBytes());
         cachingStore.remove(a);
-        cachingStore.flush();
+        cachingStore.commit(Collections.emptyMap());
 
         assertEquals(
             Collections.emptyList(),
@@ -646,7 +646,7 @@ public class CachingInMemorySessionStoreTest {
     }
 
     @Test
-    public void shouldNotForwardChangedValuesDuringFlushWhenSendOldValuesDisabled() {
+    public void shouldNotForwardChangedValuesDuringCommitWhenSendOldValuesDisabled() {
         final Windowed<Bytes> a = new Windowed<>(keyA, new SessionWindow(0, 0));
         final Windowed<String> aDeserialized = new Windowed<>("a", new SessionWindow(0, 0));
         final CacheFlushListenerStub<Windowed<String>, String> flushListener =
@@ -656,13 +656,13 @@ public class CachingInMemorySessionStoreTest {
         cachingStore.setFlushListener(flushListener, false);
 
         cachingStore.put(a, "1".getBytes());
-        cachingStore.flush();
+        cachingStore.commit(Collections.emptyMap());
 
         cachingStore.put(a, "2".getBytes());
-        cachingStore.flush();
+        cachingStore.commit(Collections.emptyMap());
 
         cachingStore.remove(a);
-        cachingStore.flush();
+        cachingStore.commit(Collections.emptyMap());
 
         assertEquals(
             asList(new KeyValueTimestamp<>(
@@ -684,7 +684,7 @@ public class CachingInMemorySessionStoreTest {
         cachingStore.put(a, "1".getBytes());
         cachingStore.put(a, "2".getBytes());
         cachingStore.remove(a);
-        cachingStore.flush();
+        cachingStore.commit(Collections.emptyMap());
 
         assertEquals(
             Collections.emptyList(),

@@ -46,6 +46,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Optional;
@@ -312,7 +313,7 @@ public class TimeOrderedKeyValueBufferTest<B extends TimeOrderedKeyValueBuffer<S
 
     @ParameterizedTest
     @MethodSource("parameters")
-    public void shouldFlush(final String testName, final Function<String, B> bufferSupplier) {
+    public void shouldCommit(final String testName, final Function<String, B> bufferSupplier) {
         setup(testName, bufferSupplier);
         final TimeOrderedKeyValueBuffer<String, String, Change<String>> buffer = bufferSupplier.apply(testName);
         final MockInternalProcessorContext context = makeContext();
@@ -325,7 +326,7 @@ public class TimeOrderedKeyValueBufferTest<B extends TimeOrderedKeyValueBuffer<S
         buffer.evictWhile(() -> buffer.minTimestamp() < 1, kv -> { });
 
         // flush everything to the changelog
-        buffer.flush();
+        buffer.commit(Collections.emptyMap());
 
         // the buffer should serialize the buffer time and the value as byte[],
         // which we can't compare for equality using ProducerRecord.
