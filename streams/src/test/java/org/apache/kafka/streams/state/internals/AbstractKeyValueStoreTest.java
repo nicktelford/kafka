@@ -167,17 +167,17 @@ public abstract class AbstractKeyValueStoreTest {
 
         // Commit the store and verify all current entries were properly committed ...
         store.commit(Collections.emptyMap());
-        assertEquals("zero", driver.flushedEntryStored(0));
-        assertEquals("one", driver.flushedEntryStored(1));
-        assertEquals("two", driver.flushedEntryStored(2));
-        assertEquals("four", driver.flushedEntryStored(4));
-        assertNull(driver.flushedEntryStored(5));
+        assertEquals("zero", driver.committedEntryStored(0));
+        assertEquals("one", driver.committedEntryStored(1));
+        assertEquals("two", driver.committedEntryStored(2));
+        assertEquals("four", driver.committedEntryStored(4));
+        assertNull(driver.committedEntryStored(5));
 
-        assertFalse(driver.flushedEntryRemoved(0));
-        assertFalse(driver.flushedEntryRemoved(1));
-        assertFalse(driver.flushedEntryRemoved(2));
-        assertFalse(driver.flushedEntryRemoved(4));
-        assertTrue(driver.flushedEntryRemoved(5));
+        assertFalse(driver.committedEntryRemoved(0));
+        assertFalse(driver.committedEntryRemoved(1));
+        assertFalse(driver.committedEntryRemoved(2));
+        assertFalse(driver.committedEntryRemoved(4));
+        assertTrue(driver.committedEntryRemoved(5));
 
         final HashMap<Integer, String> expectedContents = new HashMap<>();
         expectedContents.put(2, "two");
@@ -215,17 +215,17 @@ public abstract class AbstractKeyValueStoreTest {
 
         // Commit the store and verify all current entries were properly committed ...
         store.commit(Collections.emptyMap());
-        assertEquals("zero", driver.flushedEntryStored(0));
-        assertEquals("one", driver.flushedEntryStored(1));
-        assertEquals("two", driver.flushedEntryStored(2));
-        assertEquals("four", driver.flushedEntryStored(4));
-        assertNull(driver.flushedEntryStored(5));
+        assertEquals("zero", driver.committedEntryStored(0));
+        assertEquals("one", driver.committedEntryStored(1));
+        assertEquals("two", driver.committedEntryStored(2));
+        assertEquals("four", driver.committedEntryStored(4));
+        assertNull(driver.committedEntryStored(5));
 
-        assertFalse(driver.flushedEntryRemoved(0));
-        assertFalse(driver.flushedEntryRemoved(1));
-        assertFalse(driver.flushedEntryRemoved(2));
-        assertFalse(driver.flushedEntryRemoved(4));
-        assertTrue(driver.flushedEntryRemoved(5));
+        assertFalse(driver.committedEntryRemoved(0));
+        assertFalse(driver.committedEntryRemoved(1));
+        assertFalse(driver.committedEntryRemoved(2));
+        assertFalse(driver.committedEntryRemoved(4));
+        assertTrue(driver.committedEntryRemoved(5));
 
         final HashMap<Integer, String> expectedContents = new HashMap<>();
         expectedContents.put(2, "two");
@@ -261,17 +261,17 @@ public abstract class AbstractKeyValueStoreTest {
 
         // Commit the store and verify all current entries were properly committed ...
         store.commit(Collections.emptyMap());
-        assertEquals("zero", driver.flushedEntryStored(0));
-        assertEquals("one", driver.flushedEntryStored(1));
-        assertEquals("two", driver.flushedEntryStored(2));
-        assertEquals("four", driver.flushedEntryStored(4));
-        assertNull(driver.flushedEntryStored(5));
+        assertEquals("zero", driver.committedEntryStored(0));
+        assertEquals("one", driver.committedEntryStored(1));
+        assertEquals("two", driver.committedEntryStored(2));
+        assertEquals("four", driver.committedEntryStored(4));
+        assertNull(driver.committedEntryStored(5));
 
-        assertFalse(driver.flushedEntryRemoved(0));
-        assertFalse(driver.flushedEntryRemoved(1));
-        assertFalse(driver.flushedEntryRemoved(2));
-        assertFalse(driver.flushedEntryRemoved(4));
-        assertTrue(driver.flushedEntryRemoved(5));
+        assertFalse(driver.committedEntryRemoved(0));
+        assertFalse(driver.committedEntryRemoved(1));
+        assertFalse(driver.committedEntryRemoved(2));
+        assertFalse(driver.committedEntryRemoved(4));
+        assertTrue(driver.committedEntryRemoved(5));
     }
 
     @Test
@@ -334,15 +334,15 @@ public abstract class AbstractKeyValueStoreTest {
 
         // Commit the store and verify all current entries were properly committed ...
         store.commit(Collections.emptyMap());
-        assertEquals("zero", driver.flushedEntryStored(0));
-        assertEquals("one", driver.flushedEntryStored(1));
-        assertEquals("two", driver.flushedEntryStored(2));
-        assertEquals("four", driver.flushedEntryStored(4));
+        assertEquals("zero", driver.committedEntryStored(0));
+        assertEquals("one", driver.committedEntryStored(1));
+        assertEquals("two", driver.committedEntryStored(2));
+        assertEquals("four", driver.committedEntryStored(4));
 
-        assertFalse(driver.flushedEntryRemoved(0));
-        assertFalse(driver.flushedEntryRemoved(1));
-        assertFalse(driver.flushedEntryRemoved(2));
-        assertFalse(driver.flushedEntryRemoved(4));
+        assertFalse(driver.committedEntryRemoved(0));
+        assertFalse(driver.committedEntryRemoved(1));
+        assertFalse(driver.committedEntryRemoved(2));
+        assertFalse(driver.committedEntryRemoved(4));
     }
 
     @Test

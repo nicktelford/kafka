@@ -93,17 +93,17 @@ import static org.mockito.Mockito.when;
  *
  * // Commit the store and verify all current entries were properly committed ...
  * store.commit(Collections.emptyMap());
- * assertEquals("zero", driver.flushedEntryStored(0));
- * assertEquals("one", driver.flushedEntryStored(1));
- * assertEquals("two", driver.flushedEntryStored(2));
- * assertEquals("four", driver.flushedEntryStored(4));
- * assertNull(driver.flushedEntryStored(5));
+ * assertEquals("zero", driver.committedEntryStored(0));
+ * assertEquals("one", driver.committedEntryStored(1));
+ * assertEquals("two", driver.committedEntryStored(2));
+ * assertEquals("four", driver.committedEntryStored(4));
+ * assertNull(driver.committedEntryStored(5));
  *
- * assertEquals(false, driver.flushedEntryRemoved(0));
- * assertEquals(false, driver.flushedEntryRemoved(1));
- * assertEquals(false, driver.flushedEntryRemoved(2));
- * assertEquals(false, driver.flushedEntryRemoved(4));
- * assertEquals(true, driver.flushedEntryRemoved(5));
+ * assertEquals(false, driver.committedEntryRemoved(0));
+ * assertEquals(false, driver.committedEntryRemoved(1));
+ * assertEquals(false, driver.committedEntryRemoved(2));
+ * assertEquals(false, driver.committedEntryRemoved(4));
+ * assertEquals(true, driver.committedEntryRemoved(5));
  * </pre>
  *
  *
@@ -343,8 +343,8 @@ public class KeyValueStoreTestDriver<K, V> {
 
     /**
      * Get the context that should be supplied to a {@link KeyValueStore}'s constructor. This context records any messages
-     * written by the store to the Kafka topic, making them available via the {@link #flushedEntryStored(Object)} and
-     * {@link #flushedEntryRemoved(Object)} methods.
+     * written by the store to the Kafka topic, making them available via the {@link #committedEntryStored(Object)} and
+     * {@link #committedEntryRemoved(Object)} methods.
      * <p>
      * If the {@link KeyValueStore}'s are to be restored upon its startup, be sure to {@link #addEntryToRestoreLog(Object, Object)
      * add the restore entries} before creating the store with the {@link ProcessorContext} returned by this method.
@@ -401,7 +401,19 @@ public class KeyValueStoreTestDriver<K, V> {
      * @return the value that was flushed with the key, or {@code null} if no such key was flushed or if the entry with this
      * key was removed upon flush
      */
+    @Deprecated
     public V flushedEntryStored(final K key) {
+        return committedEntryStored(key);
+    }
+
+    /**
+     * Retrieve the value that the store {@link KeyValueStore#commit(Map) committed} with the given key.
+     *
+     * @param key the key
+     * @return the value that was flushed with the key, or {@code null} if no such key was flushed or if the entry with this
+     * key was removed upon flush
+     */
+    public V committedEntryStored(final K key) {
         return flushedEntries.get(key);
     }
 
@@ -412,26 +424,54 @@ public class KeyValueStoreTestDriver<K, V> {
      * @return {@code true} if the entry with the given key was removed when flushed, or {@code false} if the entry was not
      * removed when last flushed
      */
+    @Deprecated
     public boolean flushedEntryRemoved(final K key) {
+        return committedEntryRemoved(key);
+    }
+
+    /**
+     * Determine whether the store {@link KeyValueStore#commit(Map) committed} the removal of the given key.
+     *
+     * @param key the key
+     * @return {@code true} if the entry with the given key was removed when flushed, or {@code false} if the entry was not
+     * removed when last flushed
+     */
+    public boolean committedEntryRemoved(final K key) {
         return flushedRemovals.contains(key);
     }
 
     /**
      * Return number of removed entry
      */
+    @Deprecated
     public int numFlushedEntryStored() {
+        return numCommittedEntryStored();
+    }
+
+    /**
+     * Return number of removed entry
+     */
+    public int numCommittedEntryStored() {
         return flushedEntries.size();
     }
 
     /**
      * Return number of removed entry
      */
+    @Deprecated
     public int numFlushedEntryRemoved() {
+        return numCommittedEntryRemoved();
+    }
+
+    /**
+     * Return number of removed entry
+     */
+    public int numCommittedEntryRemoved() {
         return flushedRemovals.size();
     }
 
     /**
-     * Remove all {@link #flushedEntryStored(Object) flushed entries}, {@link #flushedEntryRemoved(Object) flushed removals},
+     * Remove all {@link #committedEntryStored(Object) committed entries}, {@link #committedEntryRemoved(Object) committed removals},
      */
     public void clear() {
         restorableEntries.clear();
