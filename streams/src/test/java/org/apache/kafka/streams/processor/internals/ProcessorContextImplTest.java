@@ -102,8 +102,8 @@ public class ProcessorContextImplTest {
     private static final String REGISTERED_STORE_NAME = "registered-store";
     private static final TopicPartition CHANGELOG_PARTITION = new TopicPartition("store-changelog", 1);
 
-    private boolean flushExecuted = false;
-    private boolean putExecuted = false;
+    private boolean commitExecuted;
+    private boolean putExecuted;
     private boolean putWithTimestampExecuted;
     private boolean putIfAbsentExecuted = false;
     private boolean putAllExecuted = false;
@@ -156,7 +156,7 @@ public class ProcessorContextImplTest {
         doTest("GlobalKeyValueStore", (Consumer<KeyValueStore<String, Long>>) store -> {
             verifyStoreCannotBeInitializedOrClosed(store);
 
-            checkThrowsUnsupportedOperation(store::flush, "flush()");
+            checkThrowsUnsupportedOperation(() -> store.commit(Collections.emptyMap()), "commit()");
             checkThrowsUnsupportedOperation(() -> store.put("1", 1L), "put()");
             checkThrowsUnsupportedOperation(() -> store.putIfAbsent("1", 1L), "putIfAbsent()");
             checkThrowsUnsupportedOperation(() -> store.putAll(Collections.emptyList()), "putAll()");
@@ -189,7 +189,7 @@ public class ProcessorContextImplTest {
         doTest("GlobalTimestampedKeyValueStore", (Consumer<TimestampedKeyValueStore<String, Long>>) store -> {
             verifyStoreCannotBeInitializedOrClosed(store);
 
-            checkThrowsUnsupportedOperation(store::flush, "flush()");
+            checkThrowsUnsupportedOperation(() -> store.commit(Collections.emptyMap()), "commit()");
             checkThrowsUnsupportedOperation(() -> store.put("1", ValueAndTimestamp.make(1L, 2L)), "put()");
             checkThrowsUnsupportedOperation(() -> store.putIfAbsent("1", ValueAndTimestamp.make(1L, 2L)), "putIfAbsent()");
             checkThrowsUnsupportedOperation(() -> store.putAll(Collections.emptyList()), "putAll()");
@@ -222,7 +222,7 @@ public class ProcessorContextImplTest {
         doTest("GlobalWindowStore", (Consumer<WindowStore<String, Long>>) store -> {
             verifyStoreCannotBeInitializedOrClosed(store);
 
-            checkThrowsUnsupportedOperation(store::flush, "flush()");
+            checkThrowsUnsupportedOperation(() -> store.commit(Collections.emptyMap()), "commit()");
             checkThrowsUnsupportedOperation(() -> store.put("1", 1L, 1L), "put()");
 
             assertEquals(iters.get(0), store.fetchAll(0L, 0L));
@@ -253,7 +253,7 @@ public class ProcessorContextImplTest {
         doTest("GlobalTimestampedWindowStore", (Consumer<TimestampedWindowStore<String, Long>>) store -> {
             verifyStoreCannotBeInitializedOrClosed(store);
 
-            checkThrowsUnsupportedOperation(store::flush, "flush()");
+            checkThrowsUnsupportedOperation(() -> store.commit(Collections.emptyMap()), "commit()");
             checkThrowsUnsupportedOperation(() -> store.put("1", ValueAndTimestamp.make(1L, 1L), 1L), "put() [with timestamp]");
 
             assertEquals(timestampedIters.get(0), store.fetchAll(0L, 0L));
@@ -284,7 +284,7 @@ public class ProcessorContextImplTest {
         doTest("GlobalSessionStore", (Consumer<SessionStore<String, Long>>) store -> {
             verifyStoreCannotBeInitializedOrClosed(store);
 
-            checkThrowsUnsupportedOperation(store::flush, "flush()");
+            checkThrowsUnsupportedOperation(() -> store.commit(Collections.emptyMap()), "commit()");
             checkThrowsUnsupportedOperation(() -> store.remove(null), "remove()");
             checkThrowsUnsupportedOperation(() -> store.put(null, null), "put()");
 
@@ -317,8 +317,8 @@ public class ProcessorContextImplTest {
         doTest("LocalKeyValueStore", (Consumer<KeyValueStore<String, Long>>) store -> {
             verifyStoreCannotBeInitializedOrClosed(store);
 
-            store.flush();
-            assertTrue(flushExecuted);
+            store.commit(Collections.emptyMap());
+            assertTrue(commitExecuted);
 
             store.put("1", 1L);
             assertTrue(putExecuted);
@@ -362,8 +362,8 @@ public class ProcessorContextImplTest {
         doTest("LocalTimestampedKeyValueStore", (Consumer<TimestampedKeyValueStore<String, Long>>) store -> {
             verifyStoreCannotBeInitializedOrClosed(store);
 
-            store.flush();
-            assertTrue(flushExecuted);
+            store.commit(Collections.emptyMap());
+            assertTrue(commitExecuted);
 
             store.put("1", ValueAndTimestamp.make(1L, 2L));
             assertTrue(putExecuted);
@@ -410,8 +410,8 @@ public class ProcessorContextImplTest {
         doTest("LocalWindowStore", (Consumer<WindowStore<String, Long>>) store -> {
             verifyStoreCannotBeInitializedOrClosed(store);
 
-            store.flush();
-            assertTrue(flushExecuted);
+            store.commit(Collections.emptyMap());
+            assertTrue(commitExecuted);
 
             store.put("1", 1L, 1L);
             assertTrue(putExecuted);
@@ -453,8 +453,8 @@ public class ProcessorContextImplTest {
         doTest("LocalTimestampedWindowStore", (Consumer<TimestampedWindowStore<String, Long>>) store -> {
             verifyStoreCannotBeInitializedOrClosed(store);
 
-            store.flush();
-            assertTrue(flushExecuted);
+            store.commit(Collections.emptyMap());
+            assertTrue(commitExecuted);
 
             store.put("1", ValueAndTimestamp.make(1L, 1L), 1L);
             assertTrue(putExecuted);
@@ -501,8 +501,8 @@ public class ProcessorContextImplTest {
         doTest("LocalSessionStore", (Consumer<SessionStore<String, Long>>) store -> {
             verifyStoreCannotBeInitializedOrClosed(store);
 
-            store.flush();
-            assertTrue(flushExecuted);
+            store.commit(Collections.emptyMap());
+            assertTrue(commitExecuted);
 
             store.remove(null);
             assertTrue(removeExecuted);
@@ -1076,9 +1076,9 @@ public class ProcessorContextImplTest {
 
     private void mockStateStoreFlush(final StateStore stateStore) {
         doAnswer(answer -> {
-            flushExecuted = true;
+            commitExecuted = true;
             return null;
-        }).when(stateStore).flush();
+        }).when(stateStore).commit(any());
     }
 
     private <T extends StateStore> void doTest(final String name, final Consumer<T> checker) {

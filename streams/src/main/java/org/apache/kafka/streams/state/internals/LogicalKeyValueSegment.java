@@ -36,6 +36,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -43,6 +44,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import static org.apache.kafka.streams.state.internals.RocksDBStore.incrementWithoutOverflow;
+import org.apache.kafka.common.TopicPartition;
 
 /**
  * This "logical segment" is a segment which shares its underlying physical store with other
@@ -143,8 +145,8 @@ class LogicalKeyValueSegment implements Comparable<LogicalKeyValueSegment>, Segm
     }
 
     @Override
-    public void flush() {
-        throw new UnsupportedOperationException("nothing to flush for logical segment");
+    public void commit(final Map<TopicPartition, Long> changelogOffsets) {
+        throw new UnsupportedOperationException("nothing to commit for logical segment");
     }
 
     @Override

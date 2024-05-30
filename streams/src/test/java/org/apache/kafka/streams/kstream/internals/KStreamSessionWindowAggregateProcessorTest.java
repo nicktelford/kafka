@@ -57,6 +57,7 @@ import org.junit.jupiter.params.provider.EnumSource;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Properties;
 import java.util.stream.Collectors;
@@ -238,7 +239,7 @@ public class KStreamSessionWindowAggregateProcessorTest {
         processor.process(new Record<>(sessionId, "third", now));
         processor.process(new Record<>(sessionId, "third", now));
 
-        sessionStore.flush();
+        sessionStore.commit(Collections.emptyMap());
 
         if (emitFinal) {
             assertEquals(
@@ -312,7 +313,7 @@ public class KStreamSessionWindowAggregateProcessorTest {
         processor.process(new Record<>("a", "3", GAP_MS + 1 + GAP_MS / 2));
         processor.process(new Record<>("c", "3", GAP_MS + 1 + GAP_MS / 2));
 
-        sessionStore.flush();
+        sessionStore.commit(Collections.emptyMap());
 
         if (emitFinal) {
             assertEquals(Arrays.asList(

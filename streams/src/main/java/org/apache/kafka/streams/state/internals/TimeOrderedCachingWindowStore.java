@@ -16,6 +16,7 @@
  */
 package org.apache.kafka.streams.state.internals;
 
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.header.internals.RecordHeaders;
 import org.apache.kafka.common.serialization.Serdes;
 import org.apache.kafka.common.utils.Bytes;
@@ -49,6 +50,7 @@ import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.NoSuchElementException;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
@@ -511,9 +513,9 @@ class TimeOrderedCachingWindowStore
     }
 
     @Override
-    public synchronized void flush() {
+    public synchronized void commit(final Map<TopicPartition, Long> changelogOffsets) {
         context.cache().flush(cacheName);
-        wrapped().flush();
+        wrapped().commit(changelogOffsets);
     }
 
     @Override

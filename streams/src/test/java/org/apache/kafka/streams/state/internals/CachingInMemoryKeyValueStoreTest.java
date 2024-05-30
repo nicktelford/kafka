@@ -144,7 +144,7 @@ public class CachingInMemoryKeyValueStoreTest extends AbstractKeyValueStoreTest 
         assertEquals(added, cacheFlushListener.forwarded.size());
 
         store.put(bytesKey("key"), null);
-        store.flush();
+        store.flushCache();
         assertEquals(added, underlyingStore.approximateNumEntries());
         assertEquals(added, cacheFlushListener.forwarded.size());
     }
@@ -236,7 +236,7 @@ public class CachingInMemoryKeyValueStoreTest extends AbstractKeyValueStoreTest 
         );
         assertEquals(Position.emptyPosition(), underlyingStore.getPosition());
 
-        store.flush();
+        store.flushCache();
 
         assertEquals(
             Position.fromMap(mkMap(mkEntry("", mkMap(mkEntry(0, 2L))))),
@@ -272,9 +272,9 @@ public class CachingInMemoryKeyValueStoreTest extends AbstractKeyValueStoreTest 
     }
 
     @Test
-    public void shouldForwardDirtyItemsWhenFlushCalled() {
+    public void shouldForwardDirtyItemsWhenCommitCalled() {
         store.put(bytesKey("1"), bytesValue("a"));
-        store.flush();
+        store.commit(Collections.emptyMap());
         assertEquals("a", cacheFlushListener.forwarded.get("1").newValue);
         assertNull(cacheFlushListener.forwarded.get("1").oldValue);
     }
@@ -283,23 +283,23 @@ public class CachingInMemoryKeyValueStoreTest extends AbstractKeyValueStoreTest 
     public void shouldForwardOldValuesWhenEnabled() {
         store.setFlushListener(cacheFlushListener, true);
         store.put(bytesKey("1"), bytesValue("a"));
-        store.flush();
+        store.flushCache();
         assertEquals("a", cacheFlushListener.forwarded.get("1").newValue);
         assertNull(cacheFlushListener.forwarded.get("1").oldValue);
         store.put(bytesKey("1"), bytesValue("b"));
         store.put(bytesKey("1"), bytesValue("c"));
-        store.flush();
+        store.flushCache();
         assertEquals("c", cacheFlushListener.forwarded.get("1").newValue);
         assertEquals("a", cacheFlushListener.forwarded.get("1").oldValue);
         store.put(bytesKey("1"), null);
-        store.flush();
+        store.flushCache();
         assertNull(cacheFlushListener.forwarded.get("1").newValue);
         assertEquals("c", cacheFlushListener.forwarded.get("1").oldValue);
         cacheFlushListener.forwarded.clear();
         store.put(bytesKey("1"), bytesValue("a"));
         store.put(bytesKey("1"), bytesValue("b"));
         store.put(bytesKey("1"), null);
-        store.flush();
+        store.flushCache();
         assertNull(cacheFlushListener.forwarded.get("1"));
         cacheFlushListener.forwarded.clear();
     }
@@ -307,22 +307,22 @@ public class CachingInMemoryKeyValueStoreTest extends AbstractKeyValueStoreTest 
     @Test
     public void shouldNotForwardOldValuesWhenDisabled() {
         store.put(bytesKey("1"), bytesValue("a"));
-        store.flush();
+        store.flushCache();
         assertEquals("a", cacheFlushListener.forwarded.get("1").newValue);
         assertNull(cacheFlushListener.forwarded.get("1").oldValue);
         store.put(bytesKey("1"), bytesValue("b"));
-        store.flush();
+        store.flushCache();
         assertEquals("b", cacheFlushListener.forwarded.get("1").newValue);
         assertNull(cacheFlushListener.forwarded.get("1").oldValue);
         store.put(bytesKey("1"), null);
-        store.flush();
+        store.flushCache();
         assertNull(cacheFlushListener.forwarded.get("1").newValue);
         assertNull(cacheFlushListener.forwarded.get("1").oldValue);
         cacheFlushListener.forwarded.clear();
         store.put(bytesKey("1"), bytesValue("a"));
         store.put(bytesKey("1"), bytesValue("b"));
         store.put(bytesKey("1"), null);
-        store.flush();
+        store.flushCache();
         assertNull(cacheFlushListener.forwarded.get("1"));
         cacheFlushListener.forwarded.clear();
     }
@@ -480,7 +480,7 @@ public class CachingInMemoryKeyValueStoreTest extends AbstractKeyValueStoreTest 
     @Test
     public void shouldNotShowItemsDeletedFromCacheButFlushedToStoreBeforeDelete() {
         store.put(bytesKey("a"), bytesValue("a"));
-        store.flush();
+        store.flushCache();
         store.delete(bytesKey("a"));
         assertNull(store.get(bytesKey("a")));
         assertFalse(store.range(bytesKey("a"), bytesKey("b")).hasNext());

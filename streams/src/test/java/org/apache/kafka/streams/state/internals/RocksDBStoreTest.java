@@ -83,6 +83,7 @@ import java.lang.reflect.Field;
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
@@ -363,7 +364,6 @@ public class RocksDBStoreTest extends AbstractKeyValueStoreTest {
     public void shouldNotThrowExceptionOnRestoreWhenThereIsPreExistingRocksDbFiles() {
         rocksDBStore.init((StateStoreContext) context, rocksDBStore);
         rocksDBStore.put(new Bytes("existingKey".getBytes(UTF_8)), "existingValue".getBytes(UTF_8));
-        rocksDBStore.flush();
 
         final List<KeyValue<byte[], byte[]>> restoreBytes = new ArrayList<>();
 
@@ -426,7 +426,6 @@ public class RocksDBStoreTest extends AbstractKeyValueStoreTest {
 
         rocksDBStore.init((StateStoreContext) context, rocksDBStore);
         rocksDBStore.putAll(entries);
-        rocksDBStore.flush();
 
         assertEquals(
             "a",
@@ -485,7 +484,6 @@ public class RocksDBStoreTest extends AbstractKeyValueStoreTest {
 
         rocksDBStore.init((StateStoreContext) context, rocksDBStore);
         rocksDBStore.putAll(entries);
-        rocksDBStore.flush();
 
         try (final KeyValueIterator<Bytes, byte[]> keysWithPrefix = rocksDBStore.prefixScan("prefix", stringSerializer)) {
             final List<String> valuesWithPrefix = new ArrayList<>();
@@ -520,7 +518,6 @@ public class RocksDBStoreTest extends AbstractKeyValueStoreTest {
 
         rocksDBStore.init((StateStoreContext) context, rocksDBStore);
         rocksDBStore.putAll(entries);
-        rocksDBStore.flush();
 
         try (final KeyValueIterator<Bytes, byte[]> keysWithPrefixAsabcd = rocksDBStore.prefixScan("abcd", stringSerializer)) {
             int numberOfKeysReturned = 0;
@@ -615,7 +612,6 @@ public class RocksDBStoreTest extends AbstractKeyValueStoreTest {
 
         rocksDBStore.init((StateStoreContext) context, rocksDBStore);
         rocksDBStore.putAll(entries);
-        rocksDBStore.flush();
 
         try (final KeyValueIterator<Bytes, byte[]> keysWithPrefix = rocksDBStore.prefixScan(prefix, stringSerializer)) {
             final List<String> valuesWithPrefix = new ArrayList<>();
@@ -650,7 +646,6 @@ public class RocksDBStoreTest extends AbstractKeyValueStoreTest {
             stringSerializer.serialize(null, "e")));
         rocksDBStore.init((StateStoreContext) context, rocksDBStore);
         rocksDBStore.putAll(entries);
-        rocksDBStore.flush();
 
         try (final KeyValueIterator<Bytes, byte[]> keysWithPrefix = rocksDBStore.prefixScan("d", stringSerializer)) {
             int numberOfKeysReturned = 0;
@@ -864,7 +859,7 @@ public class RocksDBStoreTest extends AbstractKeyValueStoreTest {
         rocksDBStore.put(
             new Bytes(stringSerializer.serialize(null, "anyKey")),
             stringSerializer.serialize(null, "anyValue"));
-        assertThrows(ProcessorStateException.class, () -> rocksDBStore.flush());
+        assertThrows(ProcessorStateException.class, () -> rocksDBStore.commit(Collections.emptyMap()));
     }
 
     @Test

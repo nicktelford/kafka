@@ -566,8 +566,8 @@ public class ProcessorStateManagerTest {
         } finally {
             stateMgr.flush();
 
-            assertTrue(persistentStore.flushed);
-            assertTrue(nonPersistentStore.flushed);
+            assertTrue(persistentStore.committed);
+            assertTrue(nonPersistentStore.committed);
 
             // make sure that flush is called in the proper order
             assertThat(persistentStore.getLastFlushCount(), Matchers.lessThan(nonPersistentStore.getLastFlushCount()));
@@ -713,7 +713,7 @@ public class ProcessorStateManagerTest {
         final ProcessorStateManager stateManager = getStateManager(Task.TaskType.ACTIVE);
         final MockKeyValueStore stateStore = new MockKeyValueStore(persistentStoreName, true) {
             @Override
-            public void flush() {
+            public void commit(final Map<TopicPartition, Long> changelogOffsets) {
                 throw exception;
             }
         };
@@ -729,7 +729,7 @@ public class ProcessorStateManagerTest {
         final ProcessorStateManager stateManager = getStateManager(Task.TaskType.ACTIVE);
         final MockKeyValueStore stateStore = new MockKeyValueStore(persistentStoreName, true) {
             @Override
-            public void flush() {
+            public void commit(final Map<TopicPartition, Long> changelogOffsets) {
                 throw exception;
             }
         };
@@ -849,19 +849,19 @@ public class ProcessorStateManagerTest {
     }
 
     @Test
-    public void shouldFlushGoodStoresEvenSomeThrowsException() {
-        final AtomicBoolean flushedStore = new AtomicBoolean(false);
+    public void shouldCommitGoodStoresEvenSomeThrowsException() {
+        final AtomicBoolean committedStore = new AtomicBoolean(false);
 
         final MockKeyValueStore stateStore1 = new MockKeyValueStore(persistentStoreName, true) {
             @Override
-            public void flush() {
+            public void commit(final Map<TopicPartition, Long> changelogOffsets) {
                 throw new RuntimeException("KABOOM!");
             }
         };
         final MockKeyValueStore stateStore2 = new MockKeyValueStore(persistentStoreTwoName, true) {
             @Override
-            public void flush() {
-                flushedStore.set(true);
+            public void commit(final Map<TopicPartition, Long> changelogOffsets) {
+                committedStore.set(true);
             }
         };
         final ProcessorStateManager stateManager = getStateManager(Task.TaskType.ACTIVE);
@@ -873,7 +873,7 @@ public class ProcessorStateManagerTest {
             stateManager.flush();
         } catch (final ProcessorStateException expected) { /* ignore */ }
 
-        assertTrue(flushedStore.get());
+        assertTrue(committedStore.get());
     }
 
     @Test

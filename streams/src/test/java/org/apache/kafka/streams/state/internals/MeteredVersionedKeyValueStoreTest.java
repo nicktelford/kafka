@@ -75,6 +75,7 @@ import static org.hamcrest.Matchers.not;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -247,10 +248,10 @@ public class MeteredVersionedKeyValueStoreTest {
     }
 
     @Test
-    public void shouldDelegateAndRecordMetricsOnFlush() {
-        store.flush();
+    public void shouldDelegateAndRecordMetricsOnCommit() {
+        store.commit(Collections.emptyMap());
 
-        verify(inner).flush();
+        verify(inner).commit(anyMap());
         assertThat((Double) getMetric("flush-rate").metricValue(), greaterThan(0.0));
     }
 

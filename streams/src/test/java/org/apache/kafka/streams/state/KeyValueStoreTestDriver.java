@@ -62,7 +62,7 @@ import static org.mockito.Mockito.when;
 
 /**
  * A component that provides a {@link #context() ProcessingContext} that can be supplied to a {@link KeyValueStore} so that
- * all entries written to the Kafka topic by the store during {@link KeyValueStore#flush()} are captured for testing purposes.
+ * all entries written to the Kafka topic by the store during {@link KeyValueStore#commit(Map)} are captured for testing purposes.
  * This class simplifies testing of various {@link KeyValueStore} instances, especially those that use
  * {@link MeteredKeyValueStore} to monitor and write its entries to the Kafka topic.
  *
@@ -91,8 +91,8 @@ import static org.mockito.Mockito.when;
  * assertNull(store.get(3));
  * store.delete(5);
  *
- * // Flush the store and verify all current entries were properly flushed ...
- * store.flush();
+ * // Commit the store and verify all current entries were properly committed ...
+ * store.commit(Collections.emptyMap());
  * assertEquals("zero", driver.flushedEntryStored(0));
  * assertEquals("one", driver.flushedEntryStored(1));
  * assertEquals("two", driver.flushedEntryStored(2));
@@ -110,10 +110,10 @@ import static org.mockito.Mockito.when;
  * <h2>Restoring a store</h2>
  * This component can be used to test whether a {@link KeyValueStore} implementation properly
  * {@link ProcessorContext#register(StateStore, StateRestoreCallback) registers itself} with the {@link ProcessorContext}, so that
- * the persisted contents of a store are properly restored from the flushed entries when the store instance is started.
+ * the persisted contents of a store are properly restored from the committed entries when the store instance is started.
  * <p>
  * To do this, create an instance of this driver component, {@link #addEntryToRestoreLog(Object, Object) add entries} that will be
- * passed to the store upon creation (simulating the entries that were previously flushed to the topic), and then create the store
+ * passed to the store upon creation (simulating the entries that were previously committed to the topic), and then create the store
  * using this driver's {@link #context() ProcessorContext}:
  *
  * <pre>

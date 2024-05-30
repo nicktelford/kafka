@@ -53,6 +53,7 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
 import java.time.temporal.ChronoUnit;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -72,6 +73,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
@@ -362,11 +364,11 @@ public class MeteredWindowStoreTest {
     }
 
     @Test
-    public void shouldRecordFlushLatency() {
-        doNothing().when(innerStoreMock).flush();
+    public void shouldRecordCommitLatency() {
+        doNothing().when(innerStoreMock).commit(anyMap());
 
         store.init((StateStoreContext) context, store);
-        store.flush();
+        store.commit(Collections.emptyMap());
 
         // it suffices to verify one flush metric since all flush metrics are recorded by the same sensor
         // and the sensor is tested elsewhere

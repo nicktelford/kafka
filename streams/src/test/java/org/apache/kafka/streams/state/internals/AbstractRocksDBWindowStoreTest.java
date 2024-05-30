@@ -442,7 +442,7 @@ public abstract class AbstractRocksDBWindowStoreTest extends AbstractWindowBytes
                         ofEpochMilli(startTime + increment * 8 + WINDOW_SIZE))));
 
         // check segment directories
-        windowStore.flush();
+        windowStore.commit(Collections.emptyMap());
         assertEquals(
                 Utils.mkSet(
                         segments.segmentName(4),
@@ -598,7 +598,7 @@ public abstract class AbstractRocksDBWindowStoreTest extends AbstractWindowBytes
         windowStore.put(6, "six", startTime + increment * 6);
         windowStore.put(7, "seven", startTime + increment * 7);
         windowStore.put(8, "eight", startTime + increment * 8);
-        windowStore.flush();
+        windowStore.commit(Collections.emptyMap());
 
         windowStore.close();
 
@@ -752,7 +752,7 @@ public abstract class AbstractRocksDBWindowStoreTest extends AbstractWindowBytes
                         ofEpochMilli(startTime + increment * 8 + WINDOW_SIZE))));
 
         // check segment directories
-        windowStore.flush();
+        windowStore.commit(Collections.emptyMap());
         assertEquals(
                 Utils.mkSet(
                         segments.segmentName(4L),

@@ -397,8 +397,8 @@ public class GlobalStateManagerImplTest {
         stateManager.registerStore(store2, stateRestoreCallback, null);
 
         stateManager.flush();
-        assertTrue(store1.flushed);
-        assertTrue(store2.flushed);
+        assertTrue(store1.committed);
+        assertTrue(store2.committed);
     }
 
     @Test
@@ -408,7 +408,7 @@ public class GlobalStateManagerImplTest {
         initializeConsumer(1, 0, t1);
         stateManager.registerStore(new NoOpReadOnlyStore<Object, Object>(store1.name()) {
             @Override
-            public void flush() {
+            public void commit(final Map<TopicPartition, Long> changelogOffsets) {
                 throw new RuntimeException("KABOOM!");
             }
         }, stateRestoreCallback, null);

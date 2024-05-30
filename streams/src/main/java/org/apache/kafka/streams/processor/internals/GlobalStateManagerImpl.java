@@ -465,7 +465,7 @@ public class GlobalStateManagerImpl implements GlobalStateManager {
                 final StateStore store = entry.getValue().get();
                 try {
                     log.trace("Flushing global store={}", store.name());
-                    store.flush();
+                    store.commit(Collections.emptyMap());
                 } catch (final RuntimeException e) {
                     throw new ProcessorStateException(
                         String.format("Failed to flush global state store %s", store.name()),

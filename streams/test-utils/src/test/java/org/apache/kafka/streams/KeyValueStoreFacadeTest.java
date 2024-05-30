@@ -27,10 +27,13 @@ import org.apache.kafka.streams.state.ValueAndTimestamp;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.Collections;
+
 import static java.util.Arrays.asList;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -109,9 +112,9 @@ public class KeyValueStoreFacadeTest {
     }
 
     @Test
-    public void shouldForwardFlush() {
-        keyValueStoreFacade.flush();
-        verify(mockedKeyValueTimestampStore).flush();
+    public void shouldForwardCommit() {
+        keyValueStoreFacade.commit(Collections.emptyMap());
+        verify(mockedKeyValueTimestampStore).commit(anyMap());
     }
 
     @Test

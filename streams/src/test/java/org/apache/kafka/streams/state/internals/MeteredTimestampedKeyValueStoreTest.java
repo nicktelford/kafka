@@ -68,6 +68,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
@@ -375,12 +376,12 @@ public class MeteredTimestampedKeyValueStoreTest {
     }
 
     @Test
-    public void shouldFlushInnerWhenFlushTimeRecords() {
+    public void shouldFlushInnerWhenCommitTimeRecords() {
         setUp();
-        doNothing().when(inner).flush();
+        doNothing().when(inner).commit(anyMap());
         init();
 
-        metered.flush();
+        metered.commit(Collections.emptyMap());
 
         final KafkaMetric metric = metric("flush-rate");
         assertTrue((Double) metric.metricValue() > 0);
