@@ -32,7 +32,7 @@ import org.apache.kafka.streams.state.internals.ThreadCache;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
+import org.apache.kafka.streams.state.internals.OffsetCheckpoint;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -115,6 +115,7 @@ public class StateDirectory implements AutoCloseable {
     private final StreamsConfig config;
     private final ConcurrentMap<TaskId, Task> tasksForLocalState = new ConcurrentHashMap<>();
     private final AtomicInteger threadsWithAssignment = new AtomicInteger(0);
+    private final Map<TaskId, Long> taskOffsetSums = new HashMap<>();
 
     /**
      * Ensures that the state base directory as well as the application's sub-directory are created.
@@ -277,6 +278,41 @@ public class StateDirectory implements AutoCloseable {
         return task;
     }
 
+    public void updateTaskOffsetSums(final TaskId taskId, final Map<TopicPartition, Long> changelogOffsets) {
+        if (changelogOffsets.isEmpty()) {
+            return;
+        }
+
+        final long offsetSum = sumOfChangelogOffsets(taskId, changelogOffsets);
+        taskOffsetSums.put(taskId, offsetSum);
+    }
+
+    private long sumOfChangelogOffsets(final TaskId taskId, final Map<TopicPartition, Long> changelogOffsets) {
+        long offsetSum = 0L;
+        for (final Map.Entry<TopicPartition, Long> changelogEntry : changelogOffsets.entrySet()) {
+            final long offset = changelogEntry.getValue();
+
+            if (offset != OffsetCheckpoint.OFFSET_UNKNOWN) {
+                if (offset < 0) {
+                    throw new StreamsException(
+                            new IllegalStateException("Expected not to get a sentinel offset, but got: " + changelogEntry),
+                            taskId);
+                }
+                offsetSum += offset;
+                if (offsetSum < 0) {
+                    log.warn("Sum of changelog offsets for task {} overflowed, pinning to Long.MAX_VALUE", taskId);
+                    return Long.MAX_VALUE;
+                }
+            }
+        }
+
+        return offsetSum;
+    }
+
+    public void removeTaskOffsets(final TaskId taskId) {
+        taskOffsetSums.remove(taskId);
+    }
+
     public void closeInitialTasksIfLastAssginedThread() {
         if (hasInitialTasks() && threadsWithAssignment.incrementAndGet() >= config.getInt(StreamsConfig.NUM_STREAM_THREADS_CONFIG)) {
             // we need to be careful here, because other StreamThreads may still be assigning tasks (via assignInitialTask)
@@ -311,6 +347,17 @@ public class StateDirectory implements AutoCloseable {
             }
         }
         return drainedTasks;
+    }
+
+    public Map<TaskId, Long> taskOffsetSums(final Set<TaskId> tasks) {
+        final Map<TaskId, Long> requestedTaskOffsetSums = new HashMap<>(tasks.size());
+        for (final TaskId taskId : tasks) {
+            final Long offset = taskOffsetSums.get(taskId);
+            if (offset != null) {
+                requestedTaskOffsetSums.put(taskId, offset);
+            }
+        }
+        return requestedTaskOffsetSums;
     }
 
     public UUID initializeProcessId() {
@@ -520,6 +567,7 @@ public class StateDirectory implements AutoCloseable {
         if (hasPersistentStores) {
             closeRemainingInitialTasks();
             threadsWithAssignment.set(0);
+            taskOffsetSums.clear();
             try {
                 stateDirLock.release();
                 stateDirLockChannel.close();
@@ -600,6 +648,7 @@ public class StateDirectory implements AutoCloseable {
                         final long now = time.milliseconds();
                         final long lastModifiedMs = taskDir.file().lastModified();
                         if (now - cleanupDelayMs > lastModifiedMs) {
+                            removeTaskOffsets(id);
                             final Task task = tasksForLocalState.remove(id);
                             if (task != null) {
                                 // close the initial Task, if one still exists
@@ -642,7 +691,10 @@ public class StateDirectory implements AutoCloseable {
         );
         if (namedTopologyDirs != null) {
             for (final File namedTopologyDir : namedTopologyDirs) {
-                closeRemainingInitialTasks(task -> task.id().topologyName().equals(parseNamedTopologyFromDirectory(namedTopologyDir.getName())));
+                final String topologyName = parseNamedTopologyFromDirectory(namedTopologyDir.getName());
+                closeRemainingInitialTasks(task -> task.id().topologyName().equals(topologyName));
+                final Set<TaskId> taskKeys = taskOffsetSums.keySet();
+                taskKeys.removeIf(taskId -> taskId.topologyName().equals(topologyName));
                 final File[] contents = namedTopologyDir.listFiles();
                 if (contents != null && contents.length == 0) {
                     try {
@@ -681,6 +733,8 @@ public class StateDirectory implements AutoCloseable {
         }
         try {
             closeRemainingInitialTasks(task -> task.id().topologyName().equals(topologyName));
+            final Set<TaskId> taskKeys = taskOffsetSums.keySet();
+            taskKeys.removeIf(taskId -> taskId.topologyName().equals(topologyName));
             Utils.delete(namedTopologyDir);
         } catch (final IOException e) {
             log.error("Hit an unexpected error while clearing local state for topology " + topologyName, e);
@@ -696,6 +750,7 @@ public class StateDirectory implements AutoCloseable {
         }
         closeRemainingInitialTasks();
         threadsWithAssignment.set(0);
+        taskOffsetSums.clear();
         final AtomicReference<Exception> firstException = new AtomicReference<>();
         for (final TaskDirectory taskDir : listAllTaskDirectories()) {
             final String dirName = taskDir.file().getName();
