@@ -148,6 +148,8 @@ public class OffsetCheckpoint {
      */
     public Map<TopicPartition, Long> read() throws IOException {
         synchronized (lock) {
+            if (!file.exists()) return Collections.emptyMap();
+
             try (final BufferedReader reader = Files.newBufferedReader(file.toPath(), StandardCharsets.UTF_8)) {
                 final int version = readInt(reader);
                 switch (version) {

@@ -741,7 +741,8 @@ public class ProcessorStateManager implements StateManager {
     void writeCheckpointFile(final boolean includeStoreManagedOffsets) {
         // checkpoint those stores that are only unmanaged, logged and persistent to the checkpoint file
         try {
-            final Map<TopicPartition, Long> existingOffsets = checkpointFile.read();
+            // load existing offsets lazily, because it's expensive and only necessary when there are persistent stores
+            Map<TopicPartition, Long> existingOffsets = null;
             final Map<TopicPartition, Long> checkpointingOffsets = new HashMap<>();
             boolean needToWriteOffsets = false;
             for (final StateStoreMetadata storeMetadata : stores.values()) {
@@ -749,6 +750,10 @@ public class ProcessorStateManager implements StateManager {
                 if (storeMetadata.changelogPartition != null &&
                         storeMetadata.stateStore.persistent() &&
                         !storeMetadata.corrupted) {
+                    if (existingOffsets == null) {
+                        existingOffsets = checkpointFile.read();
+                    }
+                    
                     final long checkpointableOffset;
                     if (storeMetadata.stateStore.managesOffsets() && !includeStoreManagedOffsets) {
                         // keep existing entry, don't update it because we don't know when the currently committed offset
@@ -771,7 +776,7 @@ public class ProcessorStateManager implements StateManager {
             // 3. at least one store is corrupt and needs to reset its checkpoint offsets by deleting the file
             // we avoid writing the .checkpoint file when we can, because this method is called on every commit(), which
             // can be very frequent, and writing this file is fairly expensive
-            if (needToWriteOffsets || existingOffsets.size() != checkpointingOffsets.size()) {
+            if (needToWriteOffsets || (existingOffsets != null && existingOffsets.size() != checkpointingOffsets.size())) {
                 log.debug("Writing checkpoint: {} for task {}", checkpointingOffsets, taskId);
                 checkpointFile.write(checkpointingOffsets);
             }
