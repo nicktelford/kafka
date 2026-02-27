@@ -1,3 +1,19 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements. See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package org.apache.kafka.streams.state.internals;
 
 import java.io.File;
@@ -18,10 +34,10 @@ import org.slf4j.LoggerFactory;
 import static org.apache.kafka.streams.state.internals.OffsetCheckpoint.OFFSET_UNKNOWN;
 
 public class LegacyCheckpointingStateStore<S extends StateStore, K, V> extends WrappedStateStore<S, K, V> {
+    public static final String CHECKPOINT_FILE_NAME = ".checkpoint";
 
     private static final Logger log = LoggerFactory.getLogger(LegacyCheckpointingStateStore.class);
 
-    static final String CHECKPOINT_FILE_NAME = ".checkpoint";
     static final long OFFSET_DELTA_THRESHOLD_FOR_CHECKPOINT = 10_000L;
 
     private final boolean eosEnabled;
@@ -33,6 +49,7 @@ public class LegacyCheckpointingStateStore<S extends StateStore, K, V> extends W
 
     private final Map<TopicPartition, Long> offsets = new HashMap<>();
     private Map<TopicPartition, Long> checkpointedOffsets;
+    private boolean corrupted = false;
 
     /**
      * Wraps the given {@link StateStore} as a {@code LegacyCheckpointingStateStore}, only if it is both
@@ -80,6 +97,12 @@ public class LegacyCheckpointingStateStore<S extends StateStore, K, V> extends W
         }
     }
 
+    public static void maybeMarkCorrupted(final StateStore store) {
+        if (store instanceof LegacyCheckpointingStateStore<?, ?, ?>) {
+            ((LegacyCheckpointingStateStore<?, ?, ?>) store).markAsCorrupted();
+        }
+    }
+
     LegacyCheckpointingStateStore(final S wrapped,
                                   final boolean eosEnabled,
                                   final Set<TopicPartition> changelogPartitions,
@@ -93,13 +116,6 @@ public class LegacyCheckpointingStateStore<S extends StateStore, K, V> extends W
         this.taskId = taskId;
         this.checkpointFile = new OffsetCheckpoint(checkpointFileFor(taskId));
         this.logPrefix = logPrefix;
-
-        // fail-crash; in this case we would not need to immediately close the state store before throwing
-        if (CHECKPOINT_FILE_NAME.equals(wrapped.name())) {
-            wrapped.close();
-            throw new IllegalArgumentException(String.format("%sIllegal store name: %s, which collides with the pre-defined " +
-                    "checkpoint file name", logPrefix, wrapped.name()));
-        }
     }
 
     @Override
@@ -113,7 +129,7 @@ public class LegacyCheckpointingStateStore<S extends StateStore, K, V> extends W
                 }
             }
             checkpointedOffsets = new HashMap<>(offsets);
-        } catch (final IOException e) {
+        } catch (final IOException | RuntimeException e) {
             throw new ProcessorStateException(String.format("%sError loading checkpoint file when creating StateStore '%s'", logPrefix, name()), e);
         }
 
@@ -137,24 +153,27 @@ public class LegacyCheckpointingStateStore<S extends StateStore, K, V> extends W
         super.commit(changelogOffsets);
 
         // update in-memory offsets
-        for (final TopicPartition partition : offsets.keySet()) {
-            offsets.put(partition, changelogOffsets.get(partition));
-        }
-        // todo: error handling: what if changelogOffsets and checkpointedOffsets contain different sets of partitions?
+        offsets.putAll(changelogOffsets);
 
         // only write the checkpoint file if both:
         // 1. in ALOS mode (under EOS, the checkpoint file is only written when closing the store)
         // 2. we have written enough new data to the store to warrant updating the checkpoint (prevents disk thrashing)
         if (!eosEnabled && checkpointNeeded(checkpointedOffsets, offsets)) {
             checkpoint();
-            checkpointedOffsets = new HashMap<>(offsets);
         }
     }
 
     @Override
     public void close() {
         super.close();
-        checkpoint();
+
+        if (!corrupted) {
+            checkpoint();
+        }
+    }
+
+    public void markAsCorrupted() {
+        corrupted = true;
     }
 
     /**
@@ -165,7 +184,7 @@ public class LegacyCheckpointingStateStore<S extends StateStore, K, V> extends W
         if (persistent() && !changelogPartitions.isEmpty()) {
             try {
                 // merge new checkpoint offsets into checkpoint file
-                final Map<TopicPartition, Long> checkpointingOffsets = checkpointFile.read();
+                final Map<TopicPartition, Long> checkpointingOffsets = new HashMap<>(checkpointFile.read());
                 for (final Map.Entry<TopicPartition, Long> entry : offsets.entrySet()) {
                     checkpointingOffsets.put(entry.getKey(), checkpointableOffsetFromChangelogOffset(entry.getValue()));
                 }
@@ -173,12 +192,13 @@ public class LegacyCheckpointingStateStore<S extends StateStore, K, V> extends W
                 log.debug("Writing checkpoint: {} for task {}", checkpointingOffsets, taskId);
                 checkpointFile.write(checkpointingOffsets);
             } catch (final IOException e) {
-                log.warn("Failed to write offset checkpoint file to [{}]." +
+                log.warn("{}Failed to write offset checkpoint file to [{}]." +
                                 " This may occur if OS cleaned the state.dir in case when it located in ${java.io.tmpdir} directory." +
                                 " This may also occur due to running multiple instances on the same machine using the same state dir." +
                                 " Changing the location of state.dir may resolve the problem.",
-                        checkpointFile, e);
+                        logPrefix, checkpointFile, e);
             }
+            checkpointedOffsets = new HashMap<>(offsets);
         }
     }
 
