@@ -51,7 +51,6 @@ import org.apache.kafka.streams.processor.internals.metrics.TaskMetrics;
 import org.apache.kafka.streams.processor.internals.metrics.ThreadMetrics;
 import org.apache.kafka.streams.state.internals.ThreadCache;
 
-import java.io.IOException;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.HashMap;
@@ -275,11 +274,6 @@ public class StreamTask extends AbstractTask implements ProcessorNodePunctuator,
 
             StateManagerUtil.registerStateStores(log, logPrefix, topology, stateMgr, stateDirectory, processorContext);
 
-            // without EOS the checkpoint file would not be deleted after loading, and
-            // with EOS we would not checkpoint ever during running state anyways.
-            // therefore we can initialize the snapshot as empty so that we would checkpoint right after loading
-            offsetSnapshotSinceLastFlush = Collections.emptyMap();
-
             transitionTo(State.RESTORING);
 
             log.info("Initialized");
@@ -403,14 +397,6 @@ public class StreamTask extends AbstractTask implements ProcessorNodePunctuator,
             case SUSPENDED:
                 // just transit the state without any logical changes: suspended and restoring states
                 // are not actually any different for inner modules
-
-                // Deleting checkpoint file before transition to RESTORING state (KAFKA-10362)
-                try {
-                    stateMgr.deleteCheckPointFileIfEOSEnabled();
-                    log.debug("Deleted check point file upon resuming with EOS enabled");
-                } catch (final IOException ioe) {
-                    log.error("Encountered error while deleting the checkpoint file due to this exception", ioe);
-                }
 
                 transitionTo(State.RESTORING);
                 log.info("Resumed to restoring state");

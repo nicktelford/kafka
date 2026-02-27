@@ -342,6 +342,7 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
                     .filter(descriptor -> allExisting.stream().noneMatch(existing -> Arrays.equals(existing, descriptor.getName())))
                     .collect(Collectors.toList());
             final List<ColumnFamilyHandle> existingColumnFamilies = new ArrayList<>(existingDescriptors.size());
+            log.warn("Opening RocksDB store", new Throwable());
             db = RocksDB.open(dbOptions, absolutePath, existingDescriptors, existingColumnFamilies);
             final List<ColumnFamilyHandle> createdColumnFamilies = db.createColumnFamilies(toCreate);
 
