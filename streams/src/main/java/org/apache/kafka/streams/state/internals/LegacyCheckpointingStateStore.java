@@ -76,30 +76,73 @@ public class LegacyCheckpointingStateStore<S extends StateStore, K, V> extends W
                 : store;
     }
 
-    /**
-     * Runs post-initialization for {@code LegacyCheckpointingStore}, only if the {@code store} is one.
-     *
-     * This must be run after <em>ALL</em> stores have been initialized, as it's possible it may delete a shared
-     * checkpoint file, which is needed during initialization.
-     */
-    public static void maybeCleanupCheckpointFile(final Iterable<StateStore> stores) {
-        for (final StateStore store : stores) {
-            if (store instanceof LegacyCheckpointingStateStore) {
-                final LegacyCheckpointingStateStore<?, ?, ?> wrappedStore = ((LegacyCheckpointingStateStore<?, ?, ?>) store);
-                try {
-                    if (wrappedStore.eosEnabled) {
-                        wrappedStore.checkpointFile.delete();
-                    }
-                } catch (final IOException e) {
-                    throw new ProcessorStateException(String.format("%sError deleting checkpoint file when creating StateStore '%s'", wrappedStore.logPrefix, store.name()), e);
-                }
-            }
-        }
-    }
-
     public static void maybeMarkCorrupted(final StateStore store) {
         if (store instanceof LegacyCheckpointingStateStore<?, ?, ?>) {
             ((LegacyCheckpointingStateStore<?, ?, ?>) store).markAsCorrupted();
+        }
+    }
+
+    /**
+     * Migrates offsets stored in a legacy, global/per-task .checkpoint file into the {@code stores}.
+     *
+     * The {@code stores} <em>MUST</em> manage their own offsets (i.e. {@link #managesOffsets()} must be {@code true}.
+     * They can either do this themselves, or be wrapped in a {@link LegacyCheckpointingStateStore} implementation.
+     *
+     * Once this method successfully returns, the legacy {@code .checkpoint} file for the given {@link TaskId} (or the
+     * global checkpoint, when {@code taskId} is {@code null}), will have been migrated and deleted from the filesystem.
+     *
+     * @param logPrefix Log prefix to use for log messages.
+     * @param stateDirectory The singleton {@link StateDirectory} used for looking up existing checkpoint files.
+     * @param taskId Either the task ID for regular stores, or {@code null} to migrate global stores.
+     * @param stores A {@link Map} of {@link TopicPartition changelog partitions} to their {@link StateStore}. For global
+     *               stores, which may have multiple {@link TopicPartition changelog partitions}, stores may appear
+     *               multiple times, once for each of its {@link TopicPartition changelog partitions}.
+     */
+    @SuppressWarnings("deprecation")
+    public static void migrateLegacyOffsets(final String logPrefix,
+                                            final StateDirectory stateDirectory,
+                                            final TaskId taskId,
+                                            final Map<TopicPartition, StateStore> stores) {
+        // load legacy per-task checkpoint
+        final File legacyCheckpointFile = checkpointFileFor(stateDirectory, taskId, null);
+
+        if (legacyCheckpointFile.exists()) {
+            log.info("Migrating legacy checkpoint file for task {}", taskId);
+            final OffsetCheckpoint legacyCheckpoint = new OffsetCheckpoint(legacyCheckpointFile);
+
+            try {
+                // build offsets for each store
+                final Map<StateStore, Map<TopicPartition, Long>> storesToMigrate = new HashMap<>();
+                for (final Map.Entry<TopicPartition, Long> entry : legacyCheckpoint.read().entrySet()) {
+                    final StateStore store = stores.get(entry.getKey());
+                    if (store != null) {
+                        storesToMigrate.computeIfAbsent(store, k -> new HashMap<>()).put(entry.getKey(), entry.getValue());
+                    }
+                }
+
+                // commit checkpointed offsets to each store
+                for (final Map.Entry<StateStore, Map<TopicPartition, Long>> entry : storesToMigrate.entrySet()) {
+                    final StateStore store = entry.getKey();
+                    if (!store.managesOffsets()) {
+                        log.warn("{}Error migrating legacy checkpoint offsets: StateStore '{}' does not manage its own offsets. " +
+                                "The checkpointed offsets for this store will not be migrated, and will be lost. " +
+                                "This store will need to fully restore its state on application restart. " +
+                                "This is a bug in Kafka Streams, and should never be possible.", logPrefix, store.name());
+                    }
+
+                    // attempt to commit the offsets, even if the store doesn't manage them itself
+                    store.commit(entry.getValue());
+                }
+
+                // delete legacy checkpoint file
+                legacyCheckpoint.delete();
+
+                log.info("Migrated legacy checkpoint file for task {} with offsets migrated for {} stores", taskId, storesToMigrate.size());
+            } catch (final IOException | RuntimeException e) {
+                throw new ProcessorStateException(String.format("%sError migrating checkpoint file for task '%s'", logPrefix, taskId), e);
+            }
+        } else {
+            log.debug("No legacy checkpoint file found for task {}", taskId);
         }
     }
 
@@ -114,7 +157,7 @@ public class LegacyCheckpointingStateStore<S extends StateStore, K, V> extends W
         this.changelogPartitions = changelogPartitions;
         this.stateDirectory = stateDirectory;
         this.taskId = taskId;
-        this.checkpointFile = new OffsetCheckpoint(checkpointFileFor(taskId));
+        this.checkpointFile = new OffsetCheckpoint(checkpointFileFor(stateDirectory, taskId, this));
         this.logPrefix = logPrefix;
     }
 
@@ -135,6 +178,15 @@ public class LegacyCheckpointingStateStore<S extends StateStore, K, V> extends W
 
         // initialize the actual store
         super.init(stateStoreContext, root);
+
+        // under EOS, we delete the checkpoint file after everything has been loaded to ensure state is wiped after a crash
+        try {
+            if (eosEnabled) {
+                checkpointFile.delete();
+            }
+        } catch (final IOException e) {
+            throw new ProcessorStateException(String.format("%sError deleting checkpoint file when creating StateStore '%s'", logPrefix, name()), e);
+        }
     }
 
     @Override
@@ -184,7 +236,7 @@ public class LegacyCheckpointingStateStore<S extends StateStore, K, V> extends W
         if (persistent() && !changelogPartitions.isEmpty()) {
             try {
                 // merge new checkpoint offsets into checkpoint file
-                final Map<TopicPartition, Long> checkpointingOffsets = new HashMap<>(checkpointFile.read());
+                final Map<TopicPartition, Long> checkpointingOffsets = new HashMap<>(offsets.size());
                 for (final Map.Entry<TopicPartition, Long> entry : offsets.entrySet()) {
                     checkpointingOffsets.put(entry.getKey(), checkpointableOffsetFromChangelogOffset(entry.getValue()));
                 }
@@ -202,9 +254,23 @@ public class LegacyCheckpointingStateStore<S extends StateStore, K, V> extends W
         }
     }
 
-    File checkpointFileFor(final TaskId taskId) {
-        return taskId == null ? new File(stateDirectory.globalStateDir(), CHECKPOINT_FILE_NAME) // global store
-                : new File(stateDirectory.getOrCreateDirectoryForTask(taskId), CHECKPOINT_FILE_NAME); // non-global store
+    static File checkpointFileFor(final StateDirectory stateDirectory,
+                                  final TaskId taskId,
+                                  final StateStore store) {
+        return taskId == null ?
+                // global store
+                (store == null ?
+                        // legacy, global file
+                        new File(stateDirectory.globalStateDir(), CHECKPOINT_FILE_NAME) :
+                        // per-store file
+                        new File(stateDirectory.globalStateDir(), CHECKPOINT_FILE_NAME + "_" + store.name())
+                ) :
+                (store == null ?
+                        // legacy, per-task file
+                        new File(stateDirectory.getOrCreateDirectoryForTask(taskId), CHECKPOINT_FILE_NAME) :
+                        // per-store file
+                        new File(stateDirectory.getOrCreateDirectoryForTask(taskId), CHECKPOINT_FILE_NAME + "_" + store.name())
+                );
     }
 
     static boolean checkpointNeeded(final Map<TopicPartition, Long> oldOffsetSnapshot,
@@ -227,12 +293,12 @@ public class LegacyCheckpointingStateStore<S extends StateStore, K, V> extends W
     }
 
     // Pass in a sentinel value to checkpoint when the changelog offset is not yet initialized/known
-    private long checkpointableOffsetFromChangelogOffset(final Long offset) {
+    private static long checkpointableOffsetFromChangelogOffset(final Long offset) {
         return offset != null ? offset : OFFSET_UNKNOWN;
     }
 
     // Convert the written offsets in the checkpoint file back to the changelog offset
-    private Long changelogOffsetFromCheckpointedOffset(final long offset) {
+    private static Long changelogOffsetFromCheckpointedOffset(final long offset) {
         return offset != OFFSET_UNKNOWN ? offset : null;
     }
 }
