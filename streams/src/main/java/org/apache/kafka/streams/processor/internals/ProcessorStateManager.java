@@ -40,7 +40,6 @@ import org.slf4j.Logger;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -235,18 +234,20 @@ public class ProcessorStateManager implements StateManager {
 
     void registerStateStores(final List<StateStore> allStores, final InternalProcessorContext<?, ?> processorContext) {
         processorContext.uninitialize();
-        final List<StateStore> wrappedStores = new ArrayList<>(allStores.size());
+        final Map<TopicPartition, StateStore> storesToMigrate = new HashMap<>(stores.size());
         for (final StateStore store : allStores) {
             if (!stores.containsKey(store.name())) {
+                final TopicPartition changelogPartition = getStorePartition(store.name());
                 final StateStore maybeWrappedStore = LegacyCheckpointingStateStore.maybeWrapStore(
-                        store, eosEnabled, Set.of(getStorePartition(store.name())), stateDirectory, taskId, logPrefix);
+                        store, eosEnabled, Set.of(changelogPartition), stateDirectory, taskId, logPrefix);
                 maybeWrappedStore.init(processorContext, maybeWrappedStore);
-                wrappedStores.add(maybeWrappedStore);
+                storesToMigrate.put(changelogPartition, maybeWrappedStore);
             }
             log.trace("Registered state store {}", store.name());
         }
 
-        LegacyCheckpointingStateStore.maybeCleanupCheckpointFile(wrappedStores);
+        // migrate offsets from the legacy checkpoint file into the stores
+        LegacyCheckpointingStateStore.migrateLegacyOffsets(logPrefix, stateDirectory, taskId, storesToMigrate);
     }
 
     void registerGlobalStateStores(final List<StateStore> stateStores) {

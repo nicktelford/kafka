@@ -201,28 +201,22 @@ public class GlobalStateManagerImplTest {
         stateManager.initialize();
         stateManager.updateChangelogOffsets(offsets);
 
+        final File storeCheckpointFile = new File(stateDirectory.globalStateDir(), StateManagerUtil.CHECKPOINT_FILE_NAME + "_" + storeName1);
+
         // set readonly to the CHECKPOINT_FILE_NAME.tmp file because we will write data to the .tmp file first
         // and then swap to CHECKPOINT_FILE_NAME by replacing it
-        final File file = new File(stateDirectory.globalStateDir(), StateManagerUtil.CHECKPOINT_FILE_NAME + ".tmp");
+        final File file = new File(stateDirectory.globalStateDir(), StateManagerUtil.CHECKPOINT_FILE_NAME + "_" + storeName1 + ".tmp");
         Files.createFile(file.toPath());
         file.setWritable(false);
 
         try (final LogCaptureAppender appender = LogCaptureAppender.createAndRegister(LegacyCheckpointingStateStore.class)) {
             stateManager.commit();
             assertThat(appender.getMessages(), hasItem(containsString(
-                "Failed to write offset checkpoint file to [" + checkpointFile.getPath() + "]. " +
+                "Failed to write offset checkpoint file to [" + storeCheckpointFile.getPath() + "]. " +
                 "This may occur if OS cleaned the state.dir in case when it located in ${java.io.tmpdir} directory. " +
                 "This may also occur due to running multiple instances on the same machine using the same state dir. " +
                 "Changing the location of state.dir may resolve the problem.")));
         }
-    }
-
-    @Test
-    public void shouldNotDeleteCheckpointFileAfterLoaded() throws IOException {
-        writeCheckpoint();
-        initializeConsumer(0, 0, t1, t2, t3, t4, t5);
-        stateManager.initialize();
-        assertTrue(checkpointFile.exists());
     }
 
     @Test
@@ -536,8 +530,7 @@ public class GlobalStateManagerImplTest {
         stateManager.updateChangelogOffsets(offsets);
         stateManager.commit();
 
-        final Map<TopicPartition, Long> result = readOffsetsCheckpoint();
-        assertThat(result, equalTo(offsets));
+        assertThat(readOffsetsCheckpoint(storeName1), equalTo(offsets));
         assertThat(stateManager.changelogOffsets(), equalTo(mkMap(
                 mkEntry(t1, 25_000L),
                 mkEntry(t2, 0L),
@@ -606,26 +599,13 @@ public class GlobalStateManagerImplTest {
                 mkEntry(t4, 0L),
                 mkEntry(t5, 0L)
         )));
-        assertThat(readOffsetsCheckpoint(), equalTo(mkMap(
-                mkEntry(t1, 10L),
-                mkEntry(t2, 0L)
-        )));
+        assertThat(readOffsetsCheckpoint(storeName1), equalTo(mkMap(mkEntry(t1, 10L))));
+        assertThat(readOffsetsCheckpoint(storeName2), equalTo(mkMap(mkEntry(t2, 0L))));
     }
 
-    @Test
-    public void shouldSkipGlobalInMemoryStoreOffsetsToFile() throws IOException {
-        initializeConsumer(0, 0, t1, t2, t3, t4, t5);
-        stateManager.initialize();
-        initializeConsumer(10, 0, t3);
-        stateManager.registerStore(store3, stateRestoreCallback, null);
-        stateManager.close();
-
-        assertThat(readOffsetsCheckpoint(), equalTo(Collections.emptyMap()));
-    }
-
-    private Map<TopicPartition, Long> readOffsetsCheckpoint() throws IOException {
+    private Map<TopicPartition, Long> readOffsetsCheckpoint(final String storeName) throws IOException {
         final OffsetCheckpoint offsetCheckpoint = new OffsetCheckpoint(new File(stateManager.baseDir(),
-                                                                                StateManagerUtil.CHECKPOINT_FILE_NAME));
+                StateManagerUtil.CHECKPOINT_FILE_NAME + "_" + storeName));
         return offsetCheckpoint.read();
     }
 

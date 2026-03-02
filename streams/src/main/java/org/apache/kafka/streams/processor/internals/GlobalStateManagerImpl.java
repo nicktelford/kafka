@@ -133,15 +133,36 @@ public class GlobalStateManagerImpl implements GlobalStateManager {
     @Override
     public Set<String> initialize() {
         final List<StateStore> wrappedStores = new ArrayList<>();
+        final Map<TopicPartition, StateStore> storesToMigrate = new HashMap<>();
         for (final StateStore stateStore : topology.globalStateStores()) {
             final List<TopicPartition> storePartitions = topicPartitionsForStore(stateStore);
             final StateStore maybeWrappedStore = LegacyCheckpointingStateStore.maybeWrapStore(
                     stateStore, eosEnabled, new HashSet<>(storePartitions), stateDirectory, null, logPrefix);
             maybeWrappedStore.init(globalProcessorContext, maybeWrappedStore);
             wrappedStores.add(maybeWrappedStore);
+
+            for (final TopicPartition storePartition : storePartitions) {
+                storesToMigrate.put(storePartition, maybeWrappedStore);
+            }
         }
 
-        LegacyCheckpointingStateStore.maybeCleanupCheckpointFile(wrappedStores);
+        // migrate offsets from legacy checkpoint file into the stores
+        LegacyCheckpointingStateStore.migrateLegacyOffsets(logPrefix, stateDirectory, null, storesToMigrate);
+
+        // load the committed offsets from the store
+        for (final StateStore store : wrappedStores) {
+            if (store.persistent()) {
+                final List<TopicPartition> changelogPartitions = storePartitions.get(store.name());
+                if (changelogPartitions != null) {
+                    for (final TopicPartition partition : changelogPartitions) {
+                        final Long offset = store.committedOffset(partition);
+                        if (offset != null) {
+                            currentOffsets.put(partition, offset);
+                        }
+                    }
+                }
+            }
+        }
 
         return Collections.unmodifiableSet(globalStoreNames);
     }
@@ -195,17 +216,6 @@ public class GlobalStateManagerImpl implements GlobalStateManager {
         );
 
         this.storePartitions.put(store.name(), topicPartitions);
-
-        // load the committed offsets from the store
-        if (store.persistent()) {
-            for (final TopicPartition partition : topicPartitions) {
-                final Long offset = store.committedOffset(partition);
-                if (offset != null) {
-                    currentOffsets.put(partition, offset);
-                }
-            }
-        }
-
 
         try {
             final Optional<InternalTopologyBuilder.ReprocessFactory<?, ?, ?, ?>> reprocessFactory = topology

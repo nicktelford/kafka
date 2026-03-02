@@ -403,7 +403,6 @@ public class ProcessorStateManagerTest {
             stateMgr.registerStateStores(Arrays.asList(persistentStore, persistentStoreTwo, nonPersistentStore), context);
             stateMgr.initializeStoreOffsets(true);
 
-            assertTrue(checkpointFile.exists());
             assertEquals(Set.of(
                 persistentStorePartition,
                 persistentStoreTwoPartition,
@@ -522,6 +521,8 @@ public class ProcessorStateManagerTest {
     public void shouldCommitAndCloseLegacyStores() throws IOException {
         checkpoint.write(emptyMap());
 
+        final File storeCheckpointFile = new File(stateDirectory.getOrCreateDirectoryForTask(taskId), CHECKPOINT_FILE_NAME + "_" + persistentStore.name());
+
         // set up ack'ed offsets
         final HashMap<TopicPartition, Long> ackedOffsets = new HashMap<>();
         ackedOffsets.put(persistentStorePartition, 25_000L);
@@ -532,7 +533,7 @@ public class ProcessorStateManagerTest {
         contextRegistersStateStore(stateMgr);
         try {
             // make sure the checkpoint file is not written yet
-            assertFalse(checkpointFile.exists());
+            assertFalse(storeCheckpointFile.exists());
 
             stateMgr.registerStateStores(Arrays.asList(persistentStore, nonPersistentStore), context);
         } finally {
@@ -547,10 +548,11 @@ public class ProcessorStateManagerTest {
             stateMgr.updateChangelogOffsets(ackedOffsets);
             stateMgr.commit();
 
-            assertTrue(checkpointFile.exists());
+            assertTrue(storeCheckpointFile.exists());
 
             // the checkpoint file should contain an offset from the persistent store only.
-            final Map<TopicPartition, Long> checkpointedOffsets = checkpoint.read();
+            final OffsetCheckpoint storeCheckpoint = new OffsetCheckpoint(storeCheckpointFile);
+            final Map<TopicPartition, Long> checkpointedOffsets = storeCheckpoint.read();
             assertThat(checkpointedOffsets, is(singletonMap(new TopicPartition(persistentStoreTopicName, 1), 25_000L)));
 
             stateMgr.close();
@@ -823,7 +825,7 @@ public class ProcessorStateManagerTest {
             for (final LogCaptureAppender.Event event : appender.getEvents()) {
                 if ("WARN".equals(event.getLevel())
                     && event.getMessage().startsWith("process-state-manager-test Failed to write offset checkpoint file to [")
-                    && event.getMessage().endsWith(".checkpoint]." +
+                    && event.getMessage().endsWith(".checkpoint_" + persistentStoreName + "]." +
                         " This may occur if OS cleaned the state.dir in case when it located in ${java.io.tmpdir} directory." +
                         " This may also occur due to running multiple instances on the same machine using the same state dir." +
                         " Changing the location of state.dir may resolve the problem.")
