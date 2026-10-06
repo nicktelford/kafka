@@ -3237,6 +3237,46 @@ public class StreamThreadTest {
     }
 
     @Test
+    public void shouldNotProcessOrPunctuateWhileProcessingPausedForUncommittedBytes() {
+        Assume.assumeFalse(processingThreadsEnabled);
+
+        final Properties streamsConfigProps = configProps(false);
+        thread = setUpThread(streamsConfigProps);
+        final TaskManager taskManager = thread.taskManager();
+        thread.setState(State.STARTING);
+        thread.setState(State.PARTITIONS_ASSIGNED);
+        thread.updateThreadMetadata("metadata");
+        thread.setState(State.RUNNING);
+        when(taskManager.processingPausedForUncommittedBytes()).thenReturn(true);
+
+        runOnce();
+
+        Mockito.verify(mainConsumer).poll(Mockito.any());
+        Mockito.verify(taskManager, Mockito.never()).process(Mockito.anyInt(), Mockito.any());
+        Mockito.verify(taskManager, Mockito.never()).punctuate();
+    }
+
+    @Test
+    public void shouldResumeProcessingWhenNoLongerPausedForUncommittedBytes() {
+        Assume.assumeFalse(processingThreadsEnabled);
+
+        final Properties streamsConfigProps = configProps(false);
+        thread = setUpThread(streamsConfigProps);
+        final TaskManager taskManager = thread.taskManager();
+        thread.setState(State.STARTING);
+        thread.setState(State.PARTITIONS_ASSIGNED);
+        thread.updateThreadMetadata("metadata");
+        thread.setState(State.RUNNING);
+        when(taskManager.processingPausedForUncommittedBytes()).thenReturn(true).thenReturn(false);
+
+        runOnce();
+        runOnce();
+
+        Mockito.verify(taskManager).process(Mockito.anyInt(), Mockito.any());
+        Mockito.verify(taskManager).punctuate();
+    }
+
+    @Test
     public void shouldUpdateLagsAfterPolling() {
         final Properties streamsConfigProps = configProps(false);
         thread = setUpThread(streamsConfigProps);

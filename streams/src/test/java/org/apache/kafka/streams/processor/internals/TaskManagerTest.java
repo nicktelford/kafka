@@ -257,6 +257,27 @@ public class TaskManagerTest {
         return taskManager;
     }
 
+    private TaskManager setUpTaskManagerWithMaxUncommittedStateBytes(final TasksRegistry tasks, final long maxUncommittedStateBytes) {
+        topologyMetadata = new TopologyMetadata(topologyBuilder, new DummyStreamsConfig(ProcessingMode.AT_LEAST_ONCE));
+        final TaskManager taskManager = new TaskManager(
+            time,
+            changeLogReader,
+            ProcessId.randomProcessId(),
+            "taskManagerTest",
+            activeTaskCreator,
+            standbyTaskCreator,
+            tasks,
+            topologyMetadata,
+            adminClient,
+            stateDirectory,
+            null,
+            null,
+            maxUncommittedStateBytes
+        );
+        taskManager.setMainConsumer(consumer);
+        return taskManager;
+    }
+
     @Test
     public void shouldClassifyExistingTasksWithoutStateUpdater() {
         final TaskManager taskManager = setUpTaskManager(ProcessingMode.AT_LEAST_ONCE, false);
@@ -3692,6 +3713,54 @@ public class TaskManagerTest {
         taskManager.handleRebalanceComplete();
         assertThat(taskManager.rebalanceInProgress(), is(false));
         verify(consumer).pause(assignment);
+    }
+
+    @Test
+    public void shouldNotNeedCommitWhenUncommittedBytesDisabled() {
+        final TasksRegistry tasks = mock(TasksRegistry.class);
+        final TaskManager taskManager = setUpTaskManagerWithMaxUncommittedStateBytes(tasks, -1L);
+        when(tasks.approximateUncommittedStateBytes()).thenReturn(Long.MAX_VALUE / 2);
+
+        assertThat(taskManager.needsCommit(), is(false));
+    }
+
+    @Test
+    public void shouldPredictUncommittedBytesFromGrowthSinceLastCheck() {
+        final TasksRegistry tasks = mock(TasksRegistry.class);
+        final TaskManager taskManager = setUpTaskManagerWithMaxUncommittedStateBytes(tasks, 1000L);
+        when(tasks.approximateUncommittedStateBytes()).thenReturn(400L, 550L, 800L);
+
+        // 400 + 400 growth
+        assertThat(taskManager.needsCommit(), is(false));
+        // 550 + 150 growth
+        assertThat(taskManager.needsCommit(), is(false));
+        // 800 + 250 growth
+        assertThat(taskManager.needsCommit(), is(true));
+    }
+
+    @Test
+    public void shouldNeedCommitForUncommittedBytesUntilCommitSucceeds() {
+        final TasksRegistry tasks = mock(TasksRegistry.class);
+        final TaskManager taskManager = setUpTaskManagerWithMaxUncommittedStateBytes(tasks, 1000L);
+        when(consumer.assignment()).thenReturn(assignment);
+        when(stateDirectory.listNonEmptyTaskDirectories()).thenReturn(new ArrayList<>());
+        when(tasks.approximateUncommittedStateBytes()).thenReturn(600L, 610L, 620L, 0L);
+
+        assertThat(taskManager.needsCommit(), is(true));
+
+        taskManager.handleRebalanceStart(emptySet());
+        assertThat(taskManager.commit(emptySet()), is(-1));
+        // 610 + 10 growth does not exceed the threshold, but the skipped commit is still required
+        assertThat(taskManager.needsCommit(), is(true));
+        assertThat(taskManager.processingPausedForUncommittedBytes(), is(true));
+
+        taskManager.handleRebalanceComplete();
+        assertThat(taskManager.processingPausedForUncommittedBytes(), is(true));
+        assertThat(taskManager.needsCommit(), is(true));
+        taskManager.commit(emptySet());
+
+        assertThat(taskManager.needsCommit(), is(false));
+        assertThat(taskManager.processingPausedForUncommittedBytes(), is(false));
     }
 
     @Test

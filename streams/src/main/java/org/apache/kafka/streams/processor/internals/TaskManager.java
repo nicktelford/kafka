@@ -1866,11 +1866,17 @@ public class TaskManager {
 
     private long lastUncommittedBytes = 0L;
 
+    // set when uncommitted bytes force a commit, and cleared only once a commit succeeds; a commit attempted during a
+    // rebalance is skipped, so the commit must still be required on the next check. Outside a rebalance, the flag is set
+    // and cleared within the same StreamThread#maybeCommit, unless the commit fails
+    private boolean uncommittedBytesCommitPending = false;
+
     boolean needsCommit() {
         // force an early commit if the uncommitted bytes exceeds or is *likely to exceed* the configured threshold
         final long uncommittedBytes = tasks.approximateUncommittedStateBytes();
 
-        final long deltaBytes = Math.min(uncommittedBytes, Math.max(uncommittedBytes, uncommittedBytes - lastUncommittedBytes));
+        // growth since the last check, which predicts the growth before the next check
+        final long deltaBytes = Math.max(0L, Math.min(uncommittedBytes, uncommittedBytes - lastUncommittedBytes));
 
         final boolean needsCommit =  maxUncommittedStateBytes > -1 && uncommittedBytes + deltaBytes > maxUncommittedStateBytes;
         if (needsCommit) {
@@ -1878,9 +1884,18 @@ public class TaskManager {
                     "Needs commit because we will exceed max uncommitted bytes before next commit. max: {}, last: {}, current: {}, delta: {}",
                     maxUncommittedStateBytes, lastUncommittedBytes, uncommittedBytes, deltaBytes
             );
+            uncommittedBytesCommitPending = true;
         }
         lastUncommittedBytes = uncommittedBytes;
-        return needsCommit;
+        return uncommittedBytesCommitPending;
+    }
+
+    /**
+     * @return true if uncommitted bytes require a commit that was skipped (during a rebalance) or failed;
+     *         processing must not continue until the commit succeeds, or the uncommitted bytes grow without bound
+     */
+    boolean processingPausedForUncommittedBytes() {
+        return uncommittedBytesCommitPending;
     }
 
     /**
@@ -1938,6 +1953,7 @@ public class TaskManager {
         } else {
             final int committedOffsets = taskExecutor.commitTasksAndMaybeUpdateCommittableOffsets(tasksToCommit, consumedOffsetsAndMetadata);
             lastUncommittedBytes = 0L;
+            uncommittedBytesCommitPending = false;
             return committedOffsets;
         }
     }
